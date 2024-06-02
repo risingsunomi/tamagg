@@ -4,10 +4,14 @@ from tkinter.scrolledtext import ScrolledText
 class ConsoleDisplay:
     def __init__(self, root):
         self.root = root
-        self.root.title("Console Display")
-        self.text_widget = ScrolledText(root, wrap=tk.WORD, width=50, height=15, bg="black", fg="lime", font=("Consolas", 12), insertbackground="lime")
-        self.text_widget.pack(pady=20)
+        self.text_widget = ScrolledText(root, wrap=tk.WORD, bg="black", fg="lime", font=("Consolas", 12), insertbackground="lime")
+        self.text_widget.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+
         self.shared_buffer = []
+        
+        # Configure grid to make the text widget resizable
+        self.root.grid_rowconfigure(0, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
 
     def update_display(self):
         while self.shared_buffer:
