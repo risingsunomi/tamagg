@@ -2,14 +2,21 @@ import cv2
 import numpy as np
 import mss
 import logging
+import os
+from datetime import datetime
 
 class ScreenRecorder:
-    def __init__(self, monitor_number=1, output_file="screen_recording.avi"):
+    def __init__(self, monitor_number: int=1, output_file: str=None):
         self.monitor_number = monitor_number
         self.output_file = output_file
         self.recording = False
         self.buffer = []
         self.logger = logging.getLogger(__name__)
+
+        if not output_file:
+            nn = datetime.now().strftime("%Y%M%d_%h%m%s")
+            root_dir = os.path.dirname(os.path.abspath(__file__))
+            self.output_file = f"{root_dir}/data/recording{nn}.avi"
 
     def start_recording(self):
         self.buffer = []  # Clear the buffer at the start of each new recording

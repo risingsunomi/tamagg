@@ -10,6 +10,7 @@ from audio_recorder import AudioRecorder
 from transcriber import Transcriber
 from console_display import ConsoleDisplay
 from screen_recorder import ScreenRecorder
+from llm_tts import LLMTTS
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG,
@@ -24,8 +25,11 @@ class Tamagg:
         self.is_recording = False
         self.audio_recorder = AudioRecorder()
         self.transcriber = Transcriber()
+        self.transcribed_text = ""
         self.console_display = ConsoleDisplay(root)
         self.screen_recorder = None
+        self.llm_tts = LLMTTS()
+
 
         # Thread management
         self.audio_rec_thread = None
@@ -100,20 +104,23 @@ class Tamagg:
 
         self.update_status("Recording stopped")
         self.logger.info("Recording stopped")
+
+        self.update_status("Interfacing with AI...")
+        self.llm_tts.transcribe_and_respond(self.screen_recorder.output_file, self.transcribed_text)
     
     def record_transcribe(self):
         try:
             self.audio_recorder.is_recording = True
             for audio_data in self.audio_recorder.record():
                 try:
-                    result = self.transcriber.transcribe(audio_data)
-                    if result.strip():
+                    self.transcribed_text = self.transcriber.transcribe(audio_data)
+                    if self.transcribed_text.strip():
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        formatted_result = f"[{timestamp}] {result}"
+                        formatted_result = f"[{timestamp}] {self.transcribed_text}"
                         self.logger.debug(f"Transcription: {formatted_result}")
                         self.console_display.add_text(formatted_result)
                         self.update_status("Transcription complete")
-                        self.logger.info("Transcription complete")
+                        self.logger.info("Transcription complete. Sending to AI with screen recording.")
                 except Exception as e:
                     self.update_status("ERROR during transcription", error=True)
                     self.logger.error(f"Error during transcription: {e}")
