@@ -4,6 +4,7 @@ import threading
 import mss
 import logging
 import time
+from dotenv import load_dotenv
 from datetime import datetime
 
 from audio_recorder import AudioRecorder
@@ -34,6 +35,7 @@ class Tamagg:
         # Thread management
         self.audio_rec_thread = None
         self.video_rec_thread = None
+        self.stop_event = threading.Event()
 
         # logging
         self.logger = logging.getLogger(__name__)
@@ -74,44 +76,52 @@ class Tamagg:
             self.start_recording()
     
     def start_recording(self):
-        self.is_recording = True
         self.update_status("Recording & Transcribing...")
         self.logger.info("Recording & Transcribing...")
+        self.is_recording = True
+        self.stop_event.clear()
 
         self.start_stop_button.config(text="Stop Recording", style='Red.TButton')
         
-        monitor_number = self.monitor_var.get().split()[-1]
-        self.screen_recorder = ScreenRecorder(int(monitor_number))
-        self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
-        self.video_rec_thread.start()
+        # monitor_number = self.monitor_var.get().split()[-1]
+        # self.screen_recorder = ScreenRecorder(int(monitor_number))
+        # self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
+        # self.video_rec_thread.start()
 
-        self.audio_rec_thread = threading.Thread(target=self.record_transcribe)
-        self.audio_rec_thread.start()
+        # self.audio_rec_thread = threading.Thread(target=self.record_transcribe)
+        # self.audio_rec_thread.start()
+
+        # time.sleep(0.5)
 
     def stop_recording(self):
+        self.update_status("Stopping Recording & Transcribing...")
+        self.logger.info("Stopping Recording & Transcribing...")
         self.is_recording = False
-        self.update_status("Stopping Transcribing...")
+        self.stop_event.set()
+        
         self.start_stop_button.config(text="Start Recording", style='Green.TButton')
+        
 
-        if self.audio_rec_thread:
-            self.logger.debug("Joining audio_rec_thread")
-            self.audio_rec_thread.join()
-            self.audio_recorder.stop()
-        if self.video_rec_thread:
-            self.logger.debug("Joining video_rec_thread")
-            self.screen_recorder.stop_recording()
-            self.video_rec_thread.join()
+        # self.is_recording = False
+        # 
+        # self.audio_recorder.stop()
+        # self.screen_recorder.stop_recording()
 
-        self.update_status("Recording stopped")
-        self.logger.info("Recording stopped")
+        # self.logger.debug("Joining audio_rec_thread")   
+        # self.audio_rec_thread.join()
+            
+        # self.logger.debug("Joining video_rec_thread")
+        # self.video_rec_thread.join()
 
-        self.update_status("Interfacing with AI...")
-        self.llm_tts.transcribe_and_respond(self.screen_recorder.output_file, self.transcribed_text)
+        # self.update_status("Recording stopped")
+        # self.logger.info("Recording stopped")
+
+        # self.update_status("Interfacing with AI...")
+        # self.llm_tts.transcribe_and_respond(self.screen_recorder.output_file, self.transcribed_text)
     
     def record_transcribe(self):
         try:
-            self.audio_recorder.is_recording = True
-            for audio_data in self.audio_recorder.record():
+            for audio_data in self.audio_recorder.record(self.stop_event):
                 try:
                     self.transcribed_text = self.transcriber.transcribe(audio_data)
                     if self.transcribed_text.strip():
@@ -134,6 +144,7 @@ class Tamagg:
             self.status_label.config(fg="lime", text=message)
 
 if __name__ == "__main__":
+    load_dotenv()
     root = tk.Tk()
     app = Tamagg(root)
     root.mainloop()
