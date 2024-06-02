@@ -15,13 +15,14 @@ class LLMTTS:
         self.console_display = console_display
         self.logger = logging.getLogger(__name__)
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
+        self.chat_history = []
 
     def transcribe_and_respond(self, video_path, transcription_text) -> str:
         response_text = ""
 
         try:
             # Read video frames and convert to base64
-            self.logger.debug(f"Opening video {video_path}")
+            self.logger.info(f"Opening video {video_path}")
             video = cv2.VideoCapture(video_path)
             base64_frames = []
             while video.isOpened():
@@ -32,27 +33,34 @@ class LLMTTS:
                 base64_frames.append(base64.b64encode(buffer).decode("utf-8"))
             video.release()
 
-            self.logger.debug(f"Grabbed {len(base64_frames)} frames")
+            if self.console_display:
+                self.console_display.add_text(
+                    f"[System] Processing {len(base64_frames)} frames with transcription\n {transcription_text}")
+                
+            self.logger.info(f"Grabbed {len(base64_frames)} frames")
 
             # Prepare the GPT-4 prompt
-            prompt_messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        transcription_text,
-                        *map(lambda x: {"image": x, "resize": 768}, base64_frames[0::60]),
-                    ],
-                },
-            ]
+            user_msg = {
+                "role": "user",
+                "content": [
+                    transcription_text,
+                    *map(lambda x: {"image": x, "resize": 768}, base64_frames[0::60]),
+                ],
+            }
+
+            self.chat_history.append(user_msg)
+            
+            prompt_messages = [user_msg]
             params = {
                 "model": self.gpt_model,
                 "messages": prompt_messages,
-                "max_tokens": 200,
+                "temperature": 0.7
             }
 
-            # Call OpenAI API
+            self.logger.info("Calling OpenAI API")
             response = self.open_ai_client.chat.completions.create(**params)
             response_text = response.choices[0].message.content
+            self.logger.info(f"ai response: {response_text}")
 
             # Log the response to the console
             if self.console_display:

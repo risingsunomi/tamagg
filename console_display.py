@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
+from datetime import datetime
 
 class ConsoleDisplay:
     def __init__(self, root):
@@ -20,7 +21,8 @@ class ConsoleDisplay:
             self.text_widget.see(tk.END)
 
     def add_text(self, text):
-        self.shared_buffer.append(text)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.shared_buffer.append(f"[{timestamp}] {text}")
         self.update_display()
 
 if __name__ == "__main__":

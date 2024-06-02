@@ -5,7 +5,6 @@ import mss
 import logging
 import time
 from dotenv import load_dotenv
-from datetime import datetime
 
 from audio_recorder import AudioRecorder
 from transcriber import Transcriber
@@ -14,7 +13,7 @@ from screen_recorder import ScreenRecorder
 from llm_tts import LLMTTS
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG,
+logging.basicConfig(level=logging.INFO,
 format='[%(name)s] %(asctime)s - %(levelname)s - %(message)s',
 handlers=[logging.StreamHandler()])
 
@@ -29,13 +28,13 @@ class Tamagg:
         self.transcribed_text = ""
         self.console_display = ConsoleDisplay(root)
         self.screen_recorder = None
-        self.llm_tts = LLMTTS()
+        self.llm_tts = LLMTTS(console_display=self.console_display)
 
 
         # Thread management
         self.audio_rec_thread = None
         self.video_rec_thread = None
-        self.stop_event = threading.Event()
+        self.ai_thread = None
 
         # logging
         self.logger = logging.getLogger(__name__)
@@ -43,12 +42,20 @@ class Tamagg:
         # Start/Stop recording buttons with dark theme
         self.style = ttk.Style()
         self.style.theme_use('clam')
+
         self.style.configure('TButton', background='green', foreground='white')
         self.style.map('TButton', background=[('active', 'green')], foreground=[('active', 'white')])
+        
         self.style.configure('Green.TButton', background='green', foreground='white')
         self.style.map('Green.TButton', background=[('active', 'darkgreen')], foreground=[('active', 'white')])
+        
         self.style.configure('Red.TButton', background='red', foreground='white')
         self.style.map('Red.TButton', background=[('active', 'red')], foreground=[('active', 'white')])
+        
+        self.style.configure('Gray.TButton', background='gray', foreground='white')
+        self.style.map('Gray.TButton', background=[('active', 'gray')], foreground=[('active', 'white')])
+        
+        
         self.start_stop_button = ttk.Button(root, text="Start Recording", command=self.toggle_recording, style='Green.TButton')
         self.start_stop_button.grid(row=1, column=0, padx=10, pady=10, sticky="se")
         self.root.bind('<Control-r>', self.toggle_recording)
@@ -79,61 +86,84 @@ class Tamagg:
         self.update_status("Recording & Transcribing...")
         self.logger.info("Recording & Transcribing...")
         self.is_recording = True
-        self.stop_event.clear()
 
+        monitor_number = self.monitor_var.get().split()[-1]
+        self.screen_recorder = ScreenRecorder(int(monitor_number))
+        self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
+        self.video_rec_thread.start()
+
+        self.audio_rec_thread = threading.Thread(target=self.record_transcribe)
+        self.audio_rec_thread.start()
+
+        time.sleep(1)
+        
         self.start_stop_button.config(text="Stop Recording", style='Red.TButton')
         
-        # monitor_number = self.monitor_var.get().split()[-1]
-        # self.screen_recorder = ScreenRecorder(int(monitor_number))
-        # self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
-        # self.video_rec_thread.start()
-
-        # self.audio_rec_thread = threading.Thread(target=self.record_transcribe)
-        # self.audio_rec_thread.start()
-
-        # time.sleep(0.5)
 
     def stop_recording(self):
         self.update_status("Stopping Recording & Transcribing...")
         self.logger.info("Stopping Recording & Transcribing...")
+        
         self.is_recording = False
-        self.stop_event.set()
+
+        self.logger.info("Changing to Start button...")
+        self.start_stop_button.config(text="Processing...", style='Gray.TButton')
+        self.start_stop_button.config(state='disabled')
+
+        self.logger.info("self.audio_recorder.stop()")
+        self.audio_recorder.stop()
+        self.logger.info("self.screen_recorder.stop_recording()")
+        self.screen_recorder.stop_recording()
+        self.logger.info("self.audio_rec_thread.join()")
+        self.audio_rec_thread.join(timeout=5)
+        self.logger.info("self.video_rec_thread.join()")
+        self.video_rec_thread.join()
+
+        self.update_status("Recording stopped")
+        self.logger.info("Recording stopped")
+
+        self.console_display.add_text(f"[User] {self.transcribed_text}")
+
+        self.console_display.add_text("[System] Interfacing with AI...")
+        self.ai_thread = threading.Thread(target=self.process_ai_assistant)
+        self.ai_thread.start()
+        self.ai_thread.join(timeout=0.1)
         
-        self.start_stop_button.config(text="Start Recording", style='Green.TButton')
-        
+        self.transcribed_text = ""
 
-        # self.is_recording = False
-        # 
-        # self.audio_recorder.stop()
-        # self.screen_recorder.stop_recording()
+    def process_ai_assistant(self):
+        self.logger.info("processing ai assistant")
+        try:
+            self.llm_tts.transcribe_and_respond(
+                self.screen_recorder.output_file,
+                self.transcribed_text
+            )
 
-        # self.logger.debug("Joining audio_rec_thread")   
-        # self.audio_rec_thread.join()
-            
-        # self.logger.debug("Joining video_rec_thread")
-        # self.video_rec_thread.join()
+            self.logger.info("done processing")
+            self.start_stop_button.config(text="Start Recording", style='Green.TButton')
+            self.start_stop_button.config(state='normal')
+        except Exception as err:
+            self.update_status("Error with LLM!", error=True)
+            self.console_display.add_text("[System] Error with LLM! Please try again...")
+            self.logger.error(err)
 
-        # self.update_status("Recording stopped")
-        # self.logger.info("Recording stopped")
-
-        # self.update_status("Interfacing with AI...")
-        # self.llm_tts.transcribe_and_respond(self.screen_recorder.output_file, self.transcribed_text)
-    
     def record_transcribe(self):
         try:
-            for audio_data in self.audio_recorder.record(self.stop_event):
-                try:
-                    self.transcribed_text = self.transcriber.transcribe(audio_data)
-                    if self.transcribed_text.strip():
-                        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        formatted_result = f"[{timestamp}] {self.transcribed_text}"
-                        self.logger.debug(f"Transcription: {formatted_result}")
-                        self.console_display.add_text(formatted_result)
-                        self.update_status("Transcription complete")
-                        self.logger.info("Transcription complete. Sending to AI with screen recording.")
-                except Exception as e:
-                    self.update_status("ERROR during transcription", error=True)
-                    self.logger.error(f"Error during transcription: {e}")
+            for audio_data in self.audio_recorder.record():
+                if self.is_recording:
+                    try:
+                        tresp = self.transcriber.transcribe(audio_data)
+                        if tresp.strip():
+                            self.transcribed_text += tresp
+                            self.logger.info(f"{self.transcribed_text}")
+                    except Exception as e:
+                        self.update_status("ERROR during transcription", error=True)
+                        self.logger.error(f"Error during transcription: {e}")
+                        break
+                else:
+                    break
+            
+            
         except Exception as e:
             self.logger.error(f"Error during audio recording: {e}")
 
