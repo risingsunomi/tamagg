@@ -5,8 +5,10 @@ import mss
 import logging
 import time
 from dotenv import load_dotenv
+from playsound import _playsoundWin
 
 from audio_recorder import AudioRecorder
+from audio_recorder_pyaudio import AudioRecorderPyAudio
 from transcriber import Transcriber
 from console_display import ConsoleDisplay
 from screen_recorder import ScreenRecorder
@@ -23,7 +25,7 @@ class Tamagg:
         self.root.title("TAMAGG [ALPHA]")
         self.root.configure(bg='black')
         self.is_recording = False
-        self.audio_recorder = AudioRecorder()
+        self.audio_recorder = AudioRecorderPyAudio()
         self.transcriber = Transcriber()
         self.transcribed_text = ""
         self.console_display = ConsoleDisplay(root)
@@ -75,6 +77,9 @@ class Tamagg:
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=0)
+
+        # Bind the close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def toggle_recording(self, event=None):
         if self.is_recording:
@@ -172,6 +177,12 @@ class Tamagg:
             self.status_label.config(fg="red", text=message)
         else:
             self.status_label.config(fg="lime", text=message)
+
+    def on_closing(self):
+        if hasattr(_playsoundWin, '_playsoundWin'):
+            _playsoundWin(None, 1)
+        self.root.quit()
+        self.root.destroy()
 
 if __name__ == "__main__":
     load_dotenv()
