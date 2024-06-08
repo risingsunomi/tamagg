@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from playsound import _playsoundWin
 
 from audio_recorder import AudioRecorder
-from audio_recorder_pyaudio import AudioRecorderPyAudio
 from transcriber import Transcriber
 from console_display import ConsoleDisplay
 from screen_recorder import ScreenRecorder
@@ -25,7 +24,7 @@ class Tamagg:
         self.root.title("TAMAGG [ALPHA]")
         self.root.configure(bg='black')
         self.is_recording = False
-        self.audio_recorder = AudioRecorderPyAudio()
+        self.audio_recorder = AudioRecorder()
         self.transcriber = Transcriber()
         self.transcribed_text = ""
         self.console_display = ConsoleDisplay(root)
@@ -81,7 +80,7 @@ class Tamagg:
         # Bind the close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-    def toggle_recording(self, event=None):
+    def toggle_recording(self):
         if self.is_recording:
             self.stop_recording()
         else:
@@ -140,7 +139,7 @@ class Tamagg:
         self.logger.info("processing ai assistant")
         try:
             self.llm_tts.transcribe_and_respond(
-                self.screen_recorder.output_file,
+                self.screen_recorder.convert_to_base64(),
                 self.transcribed_text
             )
 

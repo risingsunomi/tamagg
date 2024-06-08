@@ -8,7 +8,13 @@ import logging
 from datetime import datetime
 
 class LLMTTS:
-    def __init__(self, gpt_model="gpt-4o", tts_model="tts-1-1106", console_display=None):
+    def __init__(
+            self,
+            gpt_model="gpt-4o",
+            tts_model="tts-1-1106",
+            console_display=None
+        ):
+        
         self.gpt_model = gpt_model
         self.tts_model = tts_model
         self.open_ai_client = openai.OpenAI()
@@ -17,43 +23,59 @@ class LLMTTS:
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
         self.chat_history = []
 
-    def transcribe_and_respond(self, video_path, transcription_text) -> str:
+    def transcribe_and_respond(
+            self,
+            sbframes,
+            transcription_text
+        ) -> str:
+        
         response_text = ""
 
         try:
             # Read video frames and convert to base64
-            self.logger.info(f"Opening video {video_path}")
-            video = cv2.VideoCapture(video_path)
-            base64_frames = []
-            while video.isOpened():
-                success, frame = video.read()
-                if not success:
-                    break
-                _, buffer = cv2.imencode(".jpg", frame)
-                base64_frames.append(base64.b64encode(buffer).decode("utf-8"))
-            video.release()
+            if len(sbframes) > 0 and transcription_text:
+                if self.console_display:
+                    self.console_display.add_text(
+                        f"[System] Processing {len(sbframes)} frames with transcription\n {transcription_text}")
+                    
+                self.logger.info(f"Grabbed {len(sbframes)} frames")
 
-            if self.console_display:
-                self.console_display.add_text(
-                    f"[System] Processing {len(base64_frames)} frames with transcription\n {transcription_text}")
-                
-            self.logger.info(f"Grabbed {len(base64_frames)} frames")
+                # prompt
+                system_msg = {
+                    "role": "system",
+                    "content": f"Transcription with {len(sbframes)} base64 images"
+                }
 
-            # Prepare the GPT-4 prompt
-            user_msg = {
-                "role": "user",
-                "content": [
-                    transcription_text,
-                    *map(lambda x: {"image": x, "resize": 768}, base64_frames[0::60]),
-                ],
-            }
+                user_msg = {
+                    "role": "user",
+                    "content": [
+                        transcription_text,
+                        *map(lambda x: {
+                            "image": x,
+                            "resize": 768
+                        }, sbframes[0::60]),
+                    ],
+                }
+            elif transcription_text:
+                self.logger.info("No frames found")
 
+                # prompt
+                system_msg = {
+                    "role": "system",
+                    "content": "Transcription only"
+                }
+
+                user_msg = {
+                    "role": "user",
+                    "content": transcription_text,
+                }
+
+            self.chat_history.append(system_msg)
             self.chat_history.append(user_msg)
-            
-            prompt_messages = [user_msg]
+        
             params = {
                 "model": self.gpt_model,
-                "messages": prompt_messages,
+                "messages": self.chat_history,
                 "temperature": 0.7
             }
 
@@ -61,6 +83,11 @@ class LLMTTS:
             response = self.open_ai_client.chat.completions.create(**params)
             response_text = response.choices[0].message.content
             self.logger.info(f"ai response: {response_text}")
+
+            self.chat_history.append({
+                "role": "assistant",
+                "content": response_text
+            })
 
             # Log the response to the console
             if self.console_display:

@@ -166,3 +166,5 @@ data/
 *.avi
 *.mp4
 *.wav
+*.o
+*.out
