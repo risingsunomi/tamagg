@@ -10,13 +10,22 @@ class AudioRecorder:
 
     def record(self):
         self.logger.debug("Starting recording...")
-        with self.source as source:
-            self.recognizer.adjust_for_ambient_noise(source)
-            self.is_recording = True
-            while self.is_recording:
-                self.logger.info("recording...")
-                audio = self.recognizer.listen(source)
-                yield audio
+        if self.is_recording:
+            self.logger.error("Recording is already in progress.")
+            return
+        try:
+            with self.source as source:
+                self.recognizer.adjust_for_ambient_noise(source)
+                self.is_recording = True
+                while self.is_recording:
+                    self.logger.info("recording...")
+                    audio = self.recognizer.listen_in_background(source)
+                    yield audio
+        except Exception as e:
+            self.logger.error(f"Error during recording: {e}")
+        finally:
+            self.is_recording = False
+            self.logger.info("Recording stopped")
 
     def stop(self):
         self.logger.info("Stopping recording")

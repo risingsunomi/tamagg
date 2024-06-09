@@ -1,10 +1,3 @@
-/*
-    JPEG conversion using CUDA nvJPEG
-
-    This uses the cuda runtime nad the nvJPEG cuda library to 
-    take in RGB arrays and convert them to JPEG.
-
-*/
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -49,10 +42,13 @@ extern "C" {
         nvjpegEncoderStateCreate(nvjpeg_handle, &nvjpeg_state, stream);
         nvjpegEncoderParamsCreate(nvjpeg_handle, &nvjpeg_params, stream);
         nvjpegEncoderParamsSetSamplingFactors(nvjpeg_params, NVJPEG_CSS_444, stream);
+        cudaStreamCreate(&stream);
         std::cout << "NVJPEG initialized" << std::endl;
     }
 
     void encode_image(unsigned char* h_image, int width, int height, std::vector<unsigned char>& jpeg_output) {
+        std::cout << "Encoding image" << std::endl;
+
         // Allocate device memory and copy image data
         for (int i = 0; i < 3; i++) {
             cudaError_t cuda_status = cudaMalloc((void**)&(nvjpeg_image.channel[i]), width * height);
@@ -70,6 +66,9 @@ extern "C" {
             nvjpeg_image.pitch[i] = width;
         }
 
+        std::cout << "Image data pointer: " << static_cast<void*>(nvjpeg_image.channel[0]) << std::endl;
+        std::cout << "Width: " << width << ", Height: " << height << std::endl;
+
         nvjpegStatus_t status = nvjpegEncodeImage(
             nvjpeg_handle,
             nvjpeg_state,
@@ -82,7 +81,7 @@ extern "C" {
         );
 
         if (status != NVJPEG_STATUS_SUCCESS) {
-            std::cerr << "Error encoding image: " << get_nvjpeg_error_string(status) << std::endl;
+            std::cerr << "Error encoding image: " << get_nvjpeg_error_string(status) << " (" << status << ")" << std::endl;
             return;
         }
 
@@ -96,9 +95,11 @@ extern "C" {
         );
 
         if (status != NVJPEG_STATUS_SUCCESS) {
-            std::cerr << "Error retrieving bitstream length: " << get_nvjpeg_error_string(status) << std::endl;
+            std::cerr << "Error retrieving bitstream length: " << get_nvjpeg_error_string(status) << " (" << status << ")" << std::endl;
             return;
         }
+
+        std::cout << "Bitstream length: " << length << std::endl;
 
         cudaStreamSynchronize(stream);
         jpeg_output.resize(length);
@@ -111,21 +112,25 @@ extern "C" {
         );
 
         if (status != NVJPEG_STATUS_SUCCESS) {
-            std::cerr << "Error retrieving bitstream: " << get_nvjpeg_error_string(status) << std::endl;
+            std::cerr << "Error retrieving bitstream: " << get_nvjpeg_error_string(status) << " (" << status << ")" << std::endl;
             return;
         }
 
         cudaStreamSynchronize(stream);
 
-        for(int i = 0; i < 3; i++){
+        for (int i = 0; i < 3; i++) {
             cudaFree(nvjpeg_image.channel[i]);
         }
+
+        std::cout << "Image encoding completed" << std::endl;
     }
 
-
     void cleanup_nvjpeg() {
+        std::cout << "Cleaning up NVJPEG" << std::endl;
         nvjpegEncoderStateDestroy(nvjpeg_state);
         nvjpegEncoderParamsDestroy(nvjpeg_params);
         nvjpegDestroy(nvjpeg_handle);
+        cudaStreamDestroy(stream);
+        std::cout << "NVJPEG cleaned up" << std::endl;
     }
 }

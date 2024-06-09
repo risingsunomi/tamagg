@@ -4,6 +4,7 @@ import threading
 import mss
 import logging
 import time
+import pyaudio
 from dotenv import load_dotenv
 from playsound import _playsoundWin
 
@@ -11,7 +12,8 @@ from audio_recorder import AudioRecorder
 from transcriber import Transcriber
 from console_display import ConsoleDisplay
 from screen_recorder import ScreenRecorder
-from llm_tts import LLMTTS
+from llm import LLM
+from tts import TTS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -29,7 +31,9 @@ class Tamagg:
         self.transcribed_text = ""
         self.console_display = ConsoleDisplay(root)
         self.screen_recorder = None
-        self.llm_tts = LLMTTS(console_display=self.console_display)
+        self.llm = LLM(console_display=self.console_display)
+        self.tts = TTS(console_display=self.console_display)
+        self.microphone_index = None
 
 
         # Thread management
@@ -65,20 +69,40 @@ class Tamagg:
         self.monitor_var = tk.StringVar(value="Monitor 1")
         self.monitor_list = [f"Monitor {i}" for i in range(1, len(mss.mss().monitors))]
         self.monitor_dropdown = ttk.Combobox(root, textvariable=self.monitor_var, values=self.monitor_list)
-        self.monitor_dropdown.grid(row=1, column=1, padx=10, pady=10, sticky="e")
+        self.monitor_dropdown.grid(row=1, column=1, padx=5, pady=5, sticky="e")
 
         # Status label
         self.status_label = tk.Label(root, text="", bg="black", fg="lime")
         self.status_label.grid(row=2, column=0, columnspan=2, sticky="sw", padx=10, pady=10)
 
         # Make the console display resizable
-        self.console_display.text_widget.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
+        self.console_display.text_widget.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="nsew")
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=0)
+        self.root.grid_columnconfigure(2, weight=0)
 
-        # Bind the close event
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        # Microphone select dropdown
+        self.microphone_var = tk.StringVar()
+        self.microphone_list = self.get_microphone_list()
+        self.microphone_var.set(self.microphone_list[0])
+        self.microphone_dropdown = ttk.Combobox(root, textvariable=self.microphone_var, values=self.microphone_list)
+        self.microphone_dropdown.grid(row=1, column=2, padx=10, pady=10, sticky="e")
+        self.microphone_dropdown.bind("<<ComboboxSelected>>", self.select_microphone)
+    
+    def get_microphone_list(self):
+        p = pyaudio.PyAudio()
+        mic_list = []
+        for i in range(p.get_device_count()):
+            device_info = p.get_device_info_by_index(i)
+            if device_info['maxInputChannels'] > 0:
+                mic_list.append(f"{i}: {device_info['name']}")
+        return mic_list
+
+    def select_microphone(self, event):
+        selected_mic = self.microphone_var.get()
+        self.microphone_index = int(selected_mic.split(":")[0])
+        print(f"Selected microphone index: {self.microphone_index}")
 
     def toggle_recording(self):
         if self.is_recording:
@@ -90,6 +114,9 @@ class Tamagg:
         self.update_status("Recording & Transcribing...")
         self.logger.info("Recording & Transcribing...")
         self.is_recording = True
+
+        # stop any audio
+        self.tts.stop_speech()
 
         monitor_number = self.monitor_var.get().split()[-1]
         self.screen_recorder = ScreenRecorder(int(monitor_number))
@@ -118,6 +145,7 @@ class Tamagg:
         self.audio_recorder.stop()
         self.logger.info("self.screen_recorder.stop_recording()")
         self.screen_recorder.stop_recording()
+        
         self.logger.info("self.audio_rec_thread.join()")
         self.audio_rec_thread.join(timeout=5)
         self.logger.info("self.video_rec_thread.join()")
@@ -126,6 +154,9 @@ class Tamagg:
         self.update_status("Recording stopped")
         self.logger.info("Recording stopped")
 
+        self.start_stop_button.config(text="Start Recording", style='Green.TButton')
+        self.start_stop_button.config(state='normal')
+
         self.console_display.add_text(f"[User] {self.transcribed_text}")
         self.ai_thread = threading.Thread(target=self.process_ai_assistant)
         self.ai_thread.start()
@@ -133,31 +164,12 @@ class Tamagg:
         
         self.transcribed_text = ""
 
-    def process_ai_assistant(self):
-        self.console_display.add_text("[System] Interfacing with AI...")
-        self.logger.info("processing ai assistant")
-        try:
-            self.llm_tts.transcribe_and_respond(
-                self.screen_recorder.base64_frames,
-                self.transcribed_text
-            )
-
-            self.logger.info("done processing")
-            self.start_stop_button.config(text="Start Recording", style='Green.TButton')
-            self.start_stop_button.config(state='normal')
-        except Exception as err:
-            self.update_status("Error with LLM!", error=True)
-            self.console_display.add_text("[System] Error with LLM! Please try again...")
-            self.logger.error(err)
-
     def record_transcribe(self):
         try:
             for audio_data in self.audio_recorder.record():
                 if self.is_recording:
                     try:
                         tresp = self.transcriber.transcribe(audio_data)
-                        self.logger.info(f"tresp: {tresp}")
-
                         if tresp.strip():
                             self.transcribed_text += tresp
                             self.logger.info(f"{self.transcribed_text}")
@@ -167,10 +179,28 @@ class Tamagg:
                         break
                 else:
                     break
-            
-            
         except Exception as e:
             self.logger.error(f"Error during audio recording: {e}")
+        finally:
+            self.audio_recorder.stop()
+
+    def process_ai_assistant(self):
+        self.console_display.add_text("[System] Interfacing with AI...")
+        self.logger.info("processing ai assistant")
+        try:
+            resp = self.llm.run(
+                self.screen_recorder.get_frames(),
+                self.transcribed_text
+            )
+
+            if resp:
+                self.tts.run_speech(resp)
+
+            self.logger.info("done processing")
+        except Exception as err:
+            self.update_status("Error with LLM! Please retry...", error=True)
+            self.console_display.add_text("[System] Error with LLM! Please try again...")
+            self.logger.error(err)
 
     def update_status(self, message, error=False):
         if error:
@@ -179,8 +209,8 @@ class Tamagg:
             self.status_label.config(fg="lime", text=message)
 
     def on_closing(self):
-        if hasattr(_playsoundWin, '_playsoundWin'):
-            _playsoundWin(None, 1)
+        self.tts.stop_speech()
+        self.screen_recorder.nvjpeg.cleanup_nvjpeg()
         self.root.quit()
         self.root.destroy()
 
@@ -188,4 +218,5 @@ if __name__ == "__main__":
     load_dotenv()
     root = tk.Tk()
     app = Tamagg(root)
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
