@@ -127,8 +127,6 @@ class Tamagg:
         self.logger.info("Recording stopped")
 
         self.console_display.add_text(f"[User] {self.transcribed_text}")
-
-        self.console_display.add_text("[System] Interfacing with AI...")
         self.ai_thread = threading.Thread(target=self.process_ai_assistant)
         self.ai_thread.start()
         self.ai_thread.join(timeout=0.1)
@@ -136,10 +134,11 @@ class Tamagg:
         self.transcribed_text = ""
 
     def process_ai_assistant(self):
+        self.console_display.add_text("[System] Interfacing with AI...")
         self.logger.info("processing ai assistant")
         try:
             self.llm_tts.transcribe_and_respond(
-                self.screen_recorder.convert_to_base64(),
+                self.screen_recorder.base64_frames,
                 self.transcribed_text
             )
 
@@ -157,6 +156,8 @@ class Tamagg:
                 if self.is_recording:
                     try:
                         tresp = self.transcriber.transcribe(audio_data)
+                        self.logger.info(f"tresp: {tresp}")
+
                         if tresp.strip():
                             self.transcribed_text += tresp
                             self.logger.info(f"{self.transcribed_text}")

@@ -1,9 +1,8 @@
 /*
-    JPEG to Base64 conversion using CUDA nvJPEG
+    JPEG conversion using CUDA nvJPEG
 
     This uses the cuda runtime nad the nvJPEG cuda library to 
-    take in RGB arrays and convert them to JPEG. 
-    Then converts to base64 using 3rd lib cpp-base64
+    take in RGB arrays and convert them to JPEG.
 
 */
 #include <cstring>
@@ -11,7 +10,6 @@
 #include <vector>
 #include <nvjpeg.h>
 #include <cuda_runtime.h>
-#include "cpp-base64/base64.h"
 
 nvjpegHandle_t nvjpeg_handle;
 nvjpegEncoderState_t nvjpeg_state;
@@ -46,15 +44,15 @@ const char* get_nvjpeg_error_string(nvjpegStatus_t status) {
 
 extern "C" {
     void initialize_nvjpeg() {
+        std::cout << "Initializing NVJPEG" << std::endl;
         nvjpegCreateSimple(&nvjpeg_handle);
         nvjpegEncoderStateCreate(nvjpeg_handle, &nvjpeg_state, stream);
         nvjpegEncoderParamsCreate(nvjpeg_handle, &nvjpeg_params, stream);
         nvjpegEncoderParamsSetSamplingFactors(nvjpeg_params, NVJPEG_CSS_444, stream);
+        std::cout << "NVJPEG initialized" << std::endl;
     }
 
-    void encode_image(unsigned char* h_image, int width, int height, char** base64_output) {
-        //std::cout << "Encoding image @ " << static_cast<void*>(h_image) << std::endl;
-
+    void encode_image(unsigned char* h_image, int width, int height, std::vector<unsigned char>& jpeg_output) {
         // Allocate device memory and copy image data
         for (int i = 0; i < 3; i++) {
             cudaError_t cuda_status = cudaMalloc((void**)&(nvjpeg_image.channel[i]), width * height);
@@ -103,7 +101,7 @@ extern "C" {
         }
 
         cudaStreamSynchronize(stream);
-        std::vector<unsigned char> jpeg_output(length);
+        jpeg_output.resize(length);
         status = nvjpegEncodeRetrieveBitstream(
             nvjpeg_handle,
             nvjpeg_state,
@@ -118,15 +116,12 @@ extern "C" {
         }
 
         cudaStreamSynchronize(stream);
-        std::string base64_encoded = base64_encode(jpeg_output.data(), jpeg_output.size());
-
-        *base64_output = (char*)malloc(base64_encoded.size() + 1);
-        strcpy(*base64_output, base64_encoded.c_str());
 
         for(int i = 0; i < 3; i++){
             cudaFree(nvjpeg_image.channel[i]);
         }
     }
+
 
     void cleanup_nvjpeg() {
         nvjpegEncoderStateDestroy(nvjpeg_state);
@@ -134,4 +129,3 @@ extern "C" {
         nvjpegDestroy(nvjpeg_handle);
     }
 }
-

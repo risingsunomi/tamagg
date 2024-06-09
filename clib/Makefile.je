@@ -1,0 +1,14 @@
+XX = g++
+CXXFLAGS = -fPIC -std=c++11 -I/usr/local/cuda/include
+LDFLAGS = -L/usr/local/cuda/lib64 -lnvjpeg -lcudart
+
+all: libnvjpeg_encoder.so
+
+libnvjpeg_encoder.so: jpeg_encode.o
+	$(CXX) -shared -o $@ $^ $(LDFLAGS)
+
+jpeg_encode.o: jpeg_encode.cpp
+	$(CXX) $(CXXFLAGS) -c $<
+
+clean:
+	rm -f *.o *.so

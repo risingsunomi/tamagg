@@ -33,44 +33,22 @@ class LLMTTS:
 
         try:
             # Read video frames and convert to base64
-            if len(sbframes) > 0 and transcription_text:
-                if self.console_display:
-                    self.console_display.add_text(
-                        f"[System] Processing {len(sbframes)} frames with transcription\n {transcription_text}")
+            # send to LLM
+            if self.console_display:
+                self.console_display.add_text(
+                    f"[System] Processing {len(sbframes)} frames with transcription\n {transcription_text}")
                     
-                self.logger.info(f"Grabbed {len(sbframes)} frames")
+            user_msg = {
+                "role": "user",
+                "content": [
+                    transcription_text,
+                    *map(lambda x: {
+                        "image": x,
+                        "resize": 768
+                    }, sbframes[0::60]),
+                ],
+            }
 
-                # prompt
-                system_msg = {
-                    "role": "system",
-                    "content": f"Transcription with {len(sbframes)} base64 images"
-                }
-
-                user_msg = {
-                    "role": "user",
-                    "content": [
-                        transcription_text,
-                        *map(lambda x: {
-                            "image": x,
-                            "resize": 768
-                        }, sbframes[0::60]),
-                    ],
-                }
-            elif transcription_text:
-                self.logger.info("No frames found")
-
-                # prompt
-                system_msg = {
-                    "role": "system",
-                    "content": "Transcription only"
-                }
-
-                user_msg = {
-                    "role": "user",
-                    "content": transcription_text,
-                }
-
-            self.chat_history.append(system_msg)
             self.chat_history.append(user_msg)
         
             params = {
@@ -80,6 +58,10 @@ class LLMTTS:
             }
 
             self.logger.info("Calling OpenAI API")
+            if self.console_display:
+                self.console_display.add_text(
+                    f"[System] Calling OpenAI GPT-4o API with image and transcription")
+                
             response = self.open_ai_client.chat.completions.create(**params)
             response_text = response.choices[0].message.content
             self.logger.info(f"ai response: {response_text}")
