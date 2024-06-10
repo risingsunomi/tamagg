@@ -5,6 +5,7 @@ import mss
 import logging
 import time
 import pyaudio
+import os
 from dotenv import load_dotenv
 from playsound import _playsoundWin
 
@@ -209,8 +210,13 @@ class Tamagg:
             self.status_label.config(fg="lime", text=message)
 
     def on_closing(self):
-        self.tts.stop_speech()
-        self.screen_recorder.nvjpeg.cleanup_nvjpeg()
+        if self.tts.is_playing:
+            self.tts.stop_speech()
+
+        if self.screen_recorder:
+            self.screen_recorder.nvjpeg.cleanup_nvjpeg()
+            os.remove(self.screen_recorder.sqldb)
+        
         self.root.quit()
         self.root.destroy()
 

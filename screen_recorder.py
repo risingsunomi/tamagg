@@ -6,6 +6,8 @@ import base64
 import sqlite3
 import shortuuid
 import logging
+import os
+from datetime import datetime
 
 class ScreenRecorder:
     def __init__(self, monitor_number: int=1):
@@ -15,17 +17,19 @@ class ScreenRecorder:
         self.base64_frames = []
         self.is_recording = False
         self.logger = logging.getLogger(__name__)
+        self.root_dir = os.path.dirname(os.path.abspath(__file__))
 
         # Load NVJPEG shared library
         self.nvjpeg = ctypes.CDLL('./clib/libnvjpeg_encoder.so')
         self.nvjpeg.initialize_nvjpeg()
 
-        # convert to base64 along with jpeg cuda using c++ lib
-        self.nvjpeg64 = ctypes.CDLL('./clib/libnvjpeg_encoder64.so')
-        self.nvjpeg64.initialize_nvjpeg()
-
         # setup sqlite for desk storage of frames for longer recordings
-        self.sqlconn = sqlite3.connect("data/screen_recorder.sql", check_same_thread=False)
+        cdate = datetime.now().strftime("%Y%d%m_%H%M%S")
+        self.sqldb = f"{self.root_dir}/data/sr{cdate}.sql"
+        self.sqlconn = sqlite3.connect(
+            self.sqldb,
+            check_same_thread=False
+        )
         self.sqlcursor = self.sqlconn.cursor()
         
         try:
@@ -48,9 +52,9 @@ class ScreenRecorder:
                 while self.is_recording:
                     frame = np.array(sct.grab(monitor))
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-
+                    frame = cv2.resize(frame, (1366, 768))
+                    self.logger.info("cuda convert frame calling")
                     self.cuda_convert_frame_to_pybase64(frame)
-                    # self.cuda_convert_frame_to_cppbase64(frame)
                     # self.convert_frames_to_base64(frame)
 
                     self.logger.info(f"Captured frame {fcnt}")
@@ -70,7 +74,7 @@ class ScreenRecorder:
         """
         self.sqlcursor.execute(
             "INSERT INTO frames (record_id, frame) VALUES (?,?)",
-            (self.record_id, bframe,)
+            (self.record_id, bframe)
         )
 
         self.sqlconn.commit()
@@ -86,67 +90,37 @@ class ScreenRecorder:
         
         rows = self.sqlcursor.fetchall()
         return [row[0] for row in rows]
-
-    def cuda_convert_frame_to_cppbase64(self, frame) -> list:
-        """
-        Converts frames to JPEG using cuda and converts cuda JPEG to
-        base64 using cpp-base64 library
-        """
-        self.logger.info(f"[c++b64] converting frame to b64")
-
-        height, width, _ = frame.shape
-        d_image = frame.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
-
-        base64_output = ctypes.POINTER(ctypes.c_char)()
-        self.nvjpeg.encode_image(
-            d_image, 
-            width, 
-            height, 
-            ctypes.byref(base64_output)
-        )
-
-        base64_image = ctypes.string_at(base64_output)
-
-        # Free the memory allocated by the C++ code
-        ctypes.CDLL('libc.so.6').free(base64_output)
-
-        self.put_frame(
-            base64_image.decode('utf-8')
-        )
-
-        self.logger.info("conversion completed")
     
-    def cuda_convert_frame_to_pybase64(self, frame) -> list:
-        """
-        Using CUDA to convert frame to JPEG
-        Then JPEG to python base64 list
-        """
-        self.logger.info(f"[cjpeg] converting frame to b64")
+    def cuda_convert_frame_to_pybase64(self, frame):
+        self.logger.info("[cjpeg] converting frame to b64")
+        self.logger.info(f"frame shape: {frame.shape}")
 
         height, width, _ = frame.shape
         d_image = frame.ctypes.data_as(ctypes.POINTER(ctypes.c_ubyte))
-        jpeg_output = (ctypes.POINTER(ctypes.c_ubyte))()
+
+        jpeg_output = ctypes.POINTER(ctypes.c_ubyte)()
         jpeg_length = ctypes.c_size_t()
 
-        vector_type = ctypes.c_ubyte * (width * height * 3)
-        jpeg_vector = vector_type()
-
         self.nvjpeg.encode_image(
-            d_image, 
-            width, 
-            height, 
-            ctypes.byref(jpeg_vector)
+            d_image,
+            width,
+            height,
+            ctypes.byref(jpeg_output),
+            ctypes.byref(jpeg_length)
         )
 
-        jpeg_image = bytearray(jpeg_vector[:jpeg_length.value])
+        jpeg_image = ctypes.string_at(jpeg_output, jpeg_length.value)
 
-        # Free the memory allocated by the C++ code
+        self.logger.info(f"jpeg_image: {len(jpeg_image)}")
+
+        base64_image = base64.b64encode(jpeg_image).decode('utf-8')
+
+        self.logger.info(f"base64_image: {len(base64_image)}")
+
+        self.put_frame(base64_image)
+
         libc = ctypes.CDLL('libc.so.6')
         libc.free(jpeg_output)
-
-        self.put_frame(
-            base64.b64encode(jpeg_image).decode('utf-8')
-        )
 
         self.logger.info("conversion completed")
     

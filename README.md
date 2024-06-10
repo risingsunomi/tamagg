@@ -5,4 +5,5 @@ A gaming assistant experiment with vision, voice to text and text to voice. Shou
 * OpenAI GPT-4o
 
 ## Requirements
-* openai-whisper
+* [speech_recognition](https://github.com/Uberi/speech_recognition)
+* [pydub](https://github.com/jiaaro/pydub)

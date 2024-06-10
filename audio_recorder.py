@@ -19,7 +19,7 @@ class AudioRecorder:
                 self.is_recording = True
                 while self.is_recording:
                     self.logger.info("recording...")
-                    audio = self.recognizer.listen_in_background(source)
+                    audio = self.recognizer.listen(source)
                     yield audio
         except Exception as e:
             self.logger.error(f"Error during recording: {e}")
