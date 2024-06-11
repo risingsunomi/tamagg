@@ -39,23 +39,31 @@ class LLM:
                 self.console_display.add_text(
                     f"[System] Processing {len(sbframes)} frames with transcription\n {transcription_text}")
                     
-            user_msg = {
-                "role": "user",
-                "content": [
-                    transcription_text,
-                    *map(lambda x: {
-                        "image": x,
-                        "resize": 768
-                    }, sbframes[0::60]),
-                ],
-            }
+            if sbframes:
+                user_msg = {
+                    "role": "user",
+                    "content": [
+                        transcription_text,
+                        *map(lambda x: {
+                            "image": x,
+                            "resize": 768
+                        }, sbframes[0::60]),
+                    ]
+                }
+            else:
+                user_msg = {
+                    "role": "user",
+                    "content": [
+                        transcription_text
+                    ]
+                }
 
             self.chat_history.append(user_msg)
         
             params = {
                 "model": self.gpt_model,
                 "messages": self.chat_history,
-                "temperature": 0.7
+                "temperature": 0.4
             }
 
             self.logger.info("Calling OpenAI API")

@@ -14,6 +14,7 @@ class ScreenRecorder:
         self.record_id = shortuuid.uuid()
         self.monitor_number = monitor_number
         self.frames = []
+        self.max_frames = 3000
         self.base64_frames = []
         self.is_recording = False
         self.logger = logging.getLogger(__name__)
@@ -50,12 +51,15 @@ class ScreenRecorder:
             with mss.mss() as sct:
                 monitor = sct.monitors[self.monitor_number]
                 while self.is_recording:
+                    if fcnt == self.max_frames:
+                        self.logger.info(f"Stopped at frame {self.max_frames} due to AI model space")
+                        break
                     frame = np.array(sct.grab(monitor))
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-                    frame = cv2.resize(frame, (1366, 768))
+                    # frame = cv2.resize(frame, (1366, 768))
                     self.logger.info("cuda convert frame calling")
-                    self.cuda_convert_frame_to_pybase64(frame)
-                    # self.convert_frames_to_base64(frame)
+                    # self.cuda_convert_frame_to_pybase64(frame)
+                    self.convert_frames_to_base64(frame)
 
                     self.logger.info(f"Captured frame {fcnt}")
                     fcnt += 1

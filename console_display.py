@@ -14,16 +14,20 @@ class ConsoleDisplay:
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-    def update_display(self):
+    def update_display(self, ftype: str=None):
         while self.shared_buffer:
             text = self.shared_buffer.pop(0)
             self.text_widget.insert(tk.END, text + '\n')
+
+            if ftype:
+                self.text_widget.configure(bg="black", fg="blue")
+
             self.text_widget.see(tk.END)
 
-    def add_text(self, text):
+    def add_text(self, text: str, ftype: str=None):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.shared_buffer.append(f"[{timestamp}] {text}")
-        self.update_display()
+        self.update_display(ftype)
 
 if __name__ == "__main__":
     root = tk.Tk()

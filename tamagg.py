@@ -30,8 +30,9 @@ class Tamagg:
         self.audio_recorder = AudioRecorder()
         self.transcriber = Transcriber()
         self.transcribed_text = ""
-        self.console_display = ConsoleDisplay(root)
+        self.console_display = ConsoleDisplay(self.root)
         self.screen_recorder = None
+        self.allow_screen_recording = True
         self.llm = LLM(console_display=self.console_display)
         self.tts = TTS(console_display=self.console_display)
         self.microphone_index = None
@@ -49,35 +50,91 @@ class Tamagg:
         self.style = ttk.Style()
         self.style.theme_use('clam')
 
-        self.style.configure('TButton', background='green', foreground='white')
-        self.style.map('TButton', background=[('active', 'green')], foreground=[('active', 'white')])
+        self.style.configure(
+            'TButton', 
+            background='green', 
+            foreground='white', 
+            font=("Consolas", 10)
+        )
+        self.style.map(
+            'TButton', 
+            background=[('active', 'green')], 
+            foreground=[('active', 'white')])
         
-        self.style.configure('Green.TButton', background='green', foreground='white')
-        self.style.map('Green.TButton', background=[('active', 'darkgreen')], foreground=[('active', 'white')])
+        self.style.configure(
+            'Green.TButton', 
+            background='green', 
+            foreground='white',
+            font=("Consolas", 10)
+        )
+        self.style.map(
+            'Green.TButton', 
+            background=[('active', 'darkgreen')], 
+            foreground=[('active', 'white')]
+        )
         
-        self.style.configure('Red.TButton', background='red', foreground='white')
-        self.style.map('Red.TButton', background=[('active', 'red')], foreground=[('active', 'white')])
+        self.style.configure(
+            'Red.TButton', 
+            background='red', 
+            foreground='white',
+            font=("Consolas", 10)
+        )
+        self.style.map(
+            'Red.TButton', 
+            background=[('active', 'red')], 
+            foreground=[('active', 'white')]
+        )
         
-        self.style.configure('Gray.TButton', background='gray', foreground='white')
-        self.style.map('Gray.TButton', background=[('active', 'gray')], foreground=[('active', 'white')])
+        self.style.configure(
+            'Gray.TButton', 
+            background='gray', 
+            foreground='white',
+            font=("Consolas", 10)
+        )
+        self.style.map(
+            'Gray.TButton', 
+            background=[('active', 'gray')], 
+            foreground=[('active', 'white')]
+        )
         
         
-        self.start_stop_button = ttk.Button(root, text="Start Recording", command=self.toggle_recording, style='Green.TButton')
+        self.start_stop_button = ttk.Button(
+            self.root, 
+            text="Start Recording", 
+            command=self.toggle_recording, 
+            style='Green.TButton'
+        )
         self.start_stop_button.grid(row=1, column=0, padx=10, pady=10, sticky="se")
         self.root.bind('<Control-r>', self.toggle_recording)
 
         # Monitor select dropdown with dark theme
         self.monitor_var = tk.StringVar(value="Monitor 1")
         self.monitor_list = [f"Monitor {i}" for i in range(1, len(mss.mss().monitors))]
-        self.monitor_dropdown = ttk.Combobox(root, textvariable=self.monitor_var, values=self.monitor_list)
-        self.monitor_dropdown.grid(row=1, column=1, padx=5, pady=5, sticky="e")
+        self.monitor_dropdown = ttk.Combobox(
+            self.root, 
+            textvariable=self.monitor_var, 
+            values=self.monitor_list
+        )
+        self.monitor_dropdown.grid(row=2, column=2, padx=10, pady=10, sticky="e")
+        self.monitor_dropdown.configure(
+            background="black",
+            foreground="red",
+            font=("Consolas", 10)
+        )
 
         # Status label
-        self.status_label = tk.Label(root, text="", bg="black", fg="lime")
-        self.status_label.grid(row=2, column=0, columnspan=2, sticky="sw", padx=10, pady=10)
+        self.status_label = tk.Label(
+            self.root, 
+            text="", 
+            bg="black", 
+            fg="lime"
+        )
+        self.status_label.grid(
+            row=2, column=0, columnspan=2, sticky="sw", padx=10, pady=10)
 
         # Make the console display resizable
-        self.console_display.text_widget.grid(row=0, column=0, columnspan=3, padx=10, pady=10, sticky="nsew")
+        self.console_display.text_widget.grid(
+            row=0, column=0, columnspan=3, padx=10, pady=10, sticky="nsew")
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_columnconfigure(1, weight=0)
@@ -87,10 +144,35 @@ class Tamagg:
         self.microphone_var = tk.StringVar()
         self.microphone_list = self.get_microphone_list()
         self.microphone_var.set(self.microphone_list[0])
-        self.microphone_dropdown = ttk.Combobox(root, textvariable=self.microphone_var, values=self.microphone_list)
-        self.microphone_dropdown.grid(row=1, column=2, padx=10, pady=10, sticky="e")
-        self.microphone_dropdown.bind("<<ComboboxSelected>>", self.select_microphone)
-    
+        self.microphone_dropdown = ttk.Combobox(
+            self.root, 
+            textvariable=self.microphone_var, 
+            values=self.microphone_list
+        )
+        self.microphone_dropdown.grid(
+            row=1, column=2, padx=10, pady=10, sticky="e")
+        self.microphone_dropdown.bind(
+            "<<ComboboxSelected>>", self.select_microphone)
+
+        self.screen_record_var = tk.IntVar(value=True)
+        self.screen_record_checkbox = tk.Checkbutton(
+            self.root, 
+            text='Allow Screen Recording', 
+            variable=self.screen_record_var,
+            command=self.toggle_screen_recording)
+        self.screen_record_checkbox.grid(
+            row=1, column=1, columnspan=1, padx=10, pady=10, sticky="sw")
+
+        # File menu
+        menubar = tk.Menu(self.root)
+        menubar.configure(bg="black", fg="lime")
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Quit", command=self.on_closing)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        # Configure the root window to display the menubar
+        self.root.config(menu=menubar)
+
     def get_microphone_list(self):
         p = pyaudio.PyAudio()
         mic_list = []
@@ -105,11 +187,20 @@ class Tamagg:
         self.microphone_index = int(selected_mic.split(":")[0])
         print(f"Selected microphone index: {self.microphone_index}")
 
+    def handle_menu_selection(self, event):
+        selected_option = self.menu_var.get()
+        if selected_option == "Quit":    
+            self.logger.info("Quitting application")
+            self.on_closing()
+
     def toggle_recording(self):
         if self.is_recording:
             self.stop_recording()
         else:
             self.start_recording()
+
+    def toggle_screen_recording(self):
+        self.allow_screen_recording = bool(self.screen_record_var.get())
     
     def start_recording(self):
         self.update_status("Recording & Transcribing...")
@@ -117,12 +208,14 @@ class Tamagg:
         self.is_recording = True
 
         # stop any audio
-        self.tts.stop_speech()
+        self.tts.stop_audio()
 
-        monitor_number = self.monitor_var.get().split()[-1]
-        self.screen_recorder = ScreenRecorder(int(monitor_number))
-        self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
-        self.video_rec_thread.start()
+        # record monitor
+        if self.allow_screen_recording:
+            monitor_number = self.monitor_var.get().split()[-1]
+            self.screen_recorder = ScreenRecorder(int(monitor_number))
+            self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
+            self.video_rec_thread.start()
 
         self.audio_rec_thread = threading.Thread(target=self.record_transcribe)
         self.audio_rec_thread.start()
@@ -142,16 +235,17 @@ class Tamagg:
         self.start_stop_button.config(text="Processing...", style='Gray.TButton')
         self.start_stop_button.config(state='disabled')
 
+        if self.allow_screen_recording:
+            self.logger.info("self.screen_recorder.stop_recording()")
+            self.screen_recorder.stop_recording()
+            self.logger.info("self.video_rec_thread.join()")
+            self.video_rec_thread.join()
+
         self.logger.info("self.audio_recorder.stop()")
         self.audio_recorder.stop()
-        self.logger.info("self.screen_recorder.stop_recording()")
-        self.screen_recorder.stop_recording()
-        
         self.logger.info("self.audio_rec_thread.join()")
         self.audio_rec_thread.join(timeout=5)
-        self.logger.info("self.video_rec_thread.join()")
-        self.video_rec_thread.join()
-
+        
         self.update_status("Recording stopped")
         self.logger.info("Recording stopped")
 
@@ -186,13 +280,19 @@ class Tamagg:
             self.audio_recorder.stop()
 
     def process_ai_assistant(self):
-        self.console_display.add_text("[System] Interfacing with AI...")
+        self.console_display.add_text("[System] Interfacing with AI...", "system")
         self.logger.info("processing ai assistant")
         try:
-            resp = self.llm.run(
-                self.screen_recorder.get_frames(),
-                self.transcribed_text
-            )
+            if self.allow_screen_recording:
+                resp = self.llm.run(
+                    sbframes=None,
+                    transcription_text=self.transcribed_text
+                )
+            else:
+                resp = self.llm.run(
+                    sbframes=self.screen_recorder.get_frames(),
+                    transcription_text=self.transcribed_text
+                )
 
             if resp:
                 self.tts.run_speech(resp)
