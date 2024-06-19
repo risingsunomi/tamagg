@@ -19,8 +19,8 @@ class ConsoleDisplay:
             text = self.shared_buffer.pop(0)
             self.text_widget.insert(tk.END, text + '\n')
 
-            if ftype:
-                self.text_widget.configure(bg="black", fg="blue")
+            if ftype == "ai":
+                self.text_widget.configure(bg="black", fg="darkred")
 
             self.text_widget.see(tk.END)
 

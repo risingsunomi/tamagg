@@ -27,14 +27,14 @@ class Tamagg:
         self.root.title("TAMAGG [ALPHA]")
         self.root.configure(bg='black')
         self.is_recording = False
-        self.audio_recorder = AudioRecorder()
+        
         self.transcriber = Transcriber()
-        self.transcribed_text = ""
         self.console_display = ConsoleDisplay(self.root)
         self.screen_recorder = None
         self.allow_screen_recording = True
         self.llm = LLM(console_display=self.console_display)
         self.tts = TTS(console_display=self.console_display)
+        self.tts_thread = None
         self.microphone_index = None
 
 
@@ -208,94 +208,116 @@ class Tamagg:
         self.is_recording = True
 
         # stop any audio
-        self.tts.stop_audio()
+        self.logger.info("Stopping TTS if any")
+        if self.tts.is_playing:
+            self.tts.stop_audio()
 
         # record monitor
         if self.allow_screen_recording:
+            self.console_display.add_text(
+                "[System] Screen Recording Started",
+                "system"
+            )
+            self.logger.info("Starting screen recording thread")
+
             monitor_number = self.monitor_var.get().split()[-1]
             self.screen_recorder = ScreenRecorder(int(monitor_number))
-            self.video_rec_thread = threading.Thread(target=self.screen_recorder.start_recording)
+            self.video_rec_thread = threading.Thread(
+                target=self.screen_recorder.start_recording)
             self.video_rec_thread.start()
+        
+        # start mic and record for transcribe
+        self.console_display.add_text(
+            "[System] Audio and Transcribing Started",
+            "system"
+        )
+        self.logger.info("Starting record_transcribe thread")
 
-        self.audio_rec_thread = threading.Thread(target=self.record_transcribe)
+        self.audio_rec_thread = threading.Thread(
+            target=self.transcriber.record_transcribe)
         self.audio_rec_thread.start()
 
-        time.sleep(1)
-        
         self.start_stop_button.config(text="Stop Recording", style='Red.TButton')
         
-
     def stop_recording(self):
         self.update_status("Stopping Recording & Transcribing...")
         self.logger.info("Stopping Recording & Transcribing...")
-        
-        self.is_recording = False
+        self.console_display.add_text("[System] Stopping recordings...")
 
-        self.logger.info("Changing to Start button...")
+        self.logger.info("Changing to Processing button...")        
         self.start_stop_button.config(text="Processing...", style='Gray.TButton')
         self.start_stop_button.config(state='disabled')
 
+        processing_thread = threading.Thread(target=self._process_stop_recording)
+        processing_thread.start()
+
+    def _process_stop_recording(self):
+        if self.tts.is_playing:
+            self.tts.stop_audio()
+
+        self.is_recording = False
+
         if self.allow_screen_recording:
+            
             self.logger.info("self.screen_recorder.stop_recording()")
             self.screen_recorder.stop_recording()
             self.logger.info("self.video_rec_thread.join()")
-            self.video_rec_thread.join()
+            self.video_rec_thread.join(timeout=10)
 
-        self.logger.info("self.audio_recorder.stop()")
-        self.audio_recorder.stop()
+            self.console_display.add_text(
+                f"[System] Screen Recording Stopped\n{len(self.screen_recorder.frames)} frames captured",
+                "system"
+            )
+
         self.logger.info("self.audio_rec_thread.join()")
-        self.audio_rec_thread.join(timeout=5)
-        
+        self.transcriber.audio_recorder.stop()
+        self.audio_rec_thread.join()
+
+        self.console_display.add_text(
+            "[System] Audio and Transcribing Stopped",
+            "system"
+        )
         self.update_status("Recording stopped")
         self.logger.info("Recording stopped")
 
-        self.start_stop_button.config(text="Start Recording", style='Green.TButton')
-        self.start_stop_button.config(state='normal')
-
-        self.console_display.add_text(f"[User] {self.transcribed_text}")
+        self.console_display.add_text(f"[User] {self.transcriber.transcribed_text}")
         self.ai_thread = threading.Thread(target=self.process_ai_assistant)
         self.ai_thread.start()
-        self.ai_thread.join(timeout=0.1)
-        
-        self.transcribed_text = ""
 
-    def record_transcribe(self):
-        try:
-            for audio_data in self.audio_recorder.record():
-                if self.is_recording:
-                    try:
-                        tresp = self.transcriber.transcribe(audio_data)
-                        if tresp.strip():
-                            self.transcribed_text += tresp
-                            self.logger.info(f"{self.transcribed_text}")
-                    except Exception as e:
-                        self.update_status("ERROR during transcription", error=True)
-                        self.logger.error(f"Error during transcription: {e}")
-                        break
-                else:
-                    break
-        except Exception as e:
-            self.logger.error(f"Error during audio recording: {e}")
-        finally:
-            self.audio_recorder.stop()
+        # Update the UI in the main thread
+        self.start_stop_button.after(0, self._update_button_to_start)
+
+    def _update_button_to_start(self):
+        self.logger.info("Changing to Start button...")
+        self.start_stop_button.config(text="Start Recording", style='Green.TButton')
+        self.start_stop_button.config(state='normal')
 
     def process_ai_assistant(self):
         self.console_display.add_text("[System] Interfacing with AI...", "system")
         self.logger.info("processing ai assistant")
+        self.logger.info(f"transcription_text: {self.transcriber.transcribed_text}")
         try:
-            if self.allow_screen_recording:
+            if not self.allow_screen_recording:
                 resp = self.llm.run(
                     sbframes=None,
-                    transcription_text=self.transcribed_text
+                    transcription_text=self.transcriber.transcribed_text
                 )
             else:
                 resp = self.llm.run(
-                    sbframes=self.screen_recorder.get_frames(),
-                    transcription_text=self.transcribed_text
+                    sbframes=self.screen_recorder.frames,
+                    transcription_text=self.transcriber.transcribed_text
                 )
+            
+            # clear frames and text
+            self.transcriber.transcribed_text = ""
+            self.screen_recorder.frames = []
 
             if resp:
-                self.tts.run_speech(resp)
+                self.tts_thread = threading.Thread(
+                    target=self.tts.run_speech, args=(resp,)
+                )
+                self.tts_thread.start()
+                self.tts_thread.join()
 
             self.logger.info("done processing")
         except Exception as err:
@@ -311,7 +333,7 @@ class Tamagg:
 
     def on_closing(self):
         if self.tts.is_playing:
-            self.tts.stop_speech()
+            self.tts.stop_audio()
 
         if self.screen_recorder:
             self.screen_recorder.nvjpeg.cleanup_nvjpeg()

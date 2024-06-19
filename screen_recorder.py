@@ -7,6 +7,7 @@ import sqlite3
 import shortuuid
 import logging
 import os
+import threading
 from datetime import datetime
 
 class ScreenRecorder:
@@ -71,22 +72,25 @@ class ScreenRecorder:
     def stop_recording(self):
         self.logger.debug("stop_recording called")
         self.is_recording = False
+        # self.frames = self.get_frames()
 
     def put_frame(self, bframe):
         """
         Store base64 frame in database
         """
-        self.sqlcursor.execute(
-            "INSERT INTO frames (record_id, frame) VALUES (?,?)",
-            (self.record_id, bframe)
-        )
+        self.frames.append(bframe)
+        # self.sqlcursor.execute(
+        #     "INSERT INTO frames (record_id, frame) VALUES (?,?)",
+        #     (self.record_id, bframe)
+        # )
 
-        self.sqlconn.commit()
+        # self.sqlconn.commit()
 
-    def get_frames(self) -> list:
+    def get_frames(self):
         """
         Get frames from database per record_id
         """
+        self.logger.info(f"getting frames for recording {self.record_id}")
         self.sqlcursor.execute(
             "SELECT frame FROM frames WHERE record_id=?",
             (self.record_id,)
@@ -121,7 +125,12 @@ class ScreenRecorder:
 
         self.logger.info(f"base64_image: {len(base64_image)}")
 
-        self.put_frame(base64_image)
+        put_thread = threading.Thread(
+            target=self.put_frame,
+            args=(base64_image,)
+        )
+
+        put_thread.start()
 
         libc = ctypes.CDLL('libc.so.6')
         libc.free(jpeg_output)
