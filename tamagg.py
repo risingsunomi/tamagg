@@ -108,8 +108,9 @@ class Tamagg:
         self.root.bind('<Control-r>', self.toggle_recording)
 
         # Monitor select dropdown with dark theme
-        self.monitor_var = tk.StringVar(value="Monitor 1")
+        self.monitor_var = tk.StringVar(value="All Monitors -1")
         self.monitor_list = [f"Monitor {i}" for i in range(1, len(mss.mss().monitors))]
+        self.monitor_list = ["All Monitors -1"] + self.monitor_list
         self.monitor_dropdown = ttk.Combobox(
             self.root, 
             textvariable=self.monitor_var, 
@@ -117,8 +118,6 @@ class Tamagg:
         )
         self.monitor_dropdown.grid(row=2, column=2, padx=10, pady=10, sticky="e")
         self.monitor_dropdown.configure(
-            background="black",
-            foreground="red",
             font=("Consolas", 10)
         )
 
@@ -154,6 +153,7 @@ class Tamagg:
         self.microphone_dropdown.bind(
             "<<ComboboxSelected>>", self.select_microphone)
 
+        # enable/disable screen recording
         self.screen_record_var = tk.IntVar(value=True)
         self.screen_record_checkbox = tk.Checkbutton(
             self.root, 
@@ -214,14 +214,23 @@ class Tamagg:
 
         # record monitor
         if self.allow_screen_recording:
-            self.console_display.add_text(
-                "[System] Screen Recording Started",
-                "system"
-            )
+            # get monitor selection and start
+            monitor_number = int(self.monitor_var.get().split()[-1])
+            
+            if monitor_number > 0:
+                self.console_display.add_text(
+                    f"[System] Screen Recording Started on Monitor {monitor_number}",
+                    "system"
+                )
+            else:
+                self.console_display.add_text(
+                    f"[System] Screen Recording Started on all monitors",
+                    "system"
+                )
+
             self.logger.info("Starting screen recording thread")
 
-            monitor_number = self.monitor_var.get().split()[-1]
-            self.screen_recorder = ScreenRecorder(int(monitor_number))
+            self.screen_recorder = ScreenRecorder(monitor_number)
             self.video_rec_thread = threading.Thread(
                 target=self.screen_recorder.start_recording)
             self.video_rec_thread.start()
@@ -303,6 +312,11 @@ class Tamagg:
                     transcription_text=self.transcriber.transcribed_text
                 )
             else:
+                # resp = self.llm.run(
+                #     sbframes=self.screen_recorder.get_frames(),
+                #     transcription_text=self.transcriber.transcribed_text
+                # )
+
                 resp = self.llm.run(
                     sbframes=self.screen_recorder.frames,
                     transcription_text=self.transcriber.transcribed_text

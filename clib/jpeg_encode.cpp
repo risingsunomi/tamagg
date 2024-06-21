@@ -81,7 +81,7 @@ extern "C" {
             nvjpeg_state,
             nvjpeg_params,
             &nvjpeg_image,
-            NVJPEG_INPUT_BGR,
+            NVJPEG_INPUT_RGB,
             width,
             height,
             stream

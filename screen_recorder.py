@@ -41,6 +41,19 @@ class ScreenRecorder:
                 )""")
         except sqlite3.OperationalError:
             pass
+
+    def process_frame(self, frame: np.ndarray, use_cuda=False):
+        # process the frame and convert to base64
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+
+        # cuda current not working, working on fix
+        self.convert_frames_to_base64(frame)
+        
+        # if use_cuda:
+        #     self.cuda_convert_frame_to_pybase64(frame)
+        # else:
+        #     # uses opencv
+        #     self.convert_frames_to_base64(frame)
     
     def start_recording(self):
         self.is_recording = True
@@ -50,20 +63,35 @@ class ScreenRecorder:
         try:
             fcnt = 1
             with mss.mss() as sct:
-                monitor = sct.monitors[self.monitor_number]
-                while self.is_recording:
-                    if fcnt == self.max_frames:
-                        self.logger.info(f"Stopped at frame {self.max_frames} due to AI model space")
-                        break
-                    frame = np.array(sct.grab(monitor))
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-                    # frame = cv2.resize(frame, (1366, 768))
-                    self.logger.info("cuda convert frame calling")
-                    # self.cuda_convert_frame_to_pybase64(frame)
-                    self.convert_frames_to_base64(frame)
+                if self.monitor_number == -1 and len(sct.monitors) >= 3:
+                    while self.is_recording:
+                        screen_caps = [np.array(sct.grab(sct.monitors[i])) for i in range(1, len(sct.monitors))]
+                        # hstack
+                        combined_monitors = np.hstack(tuple(screen_caps))
 
-                    self.logger.info(f"Captured frame {fcnt}")
-                    fcnt += 1
+                        # process
+                        self.process_frame(
+                            combined_monitors,
+                            True
+                        )
+
+                        self.logger.info(f"Captured frame {fcnt}")
+                        fcnt += 1
+                else:
+                    if self.monitor_number == -1:
+                        self.monitor_number == 1
+
+                    monitor = sct.monitors[self.monitor_number]
+                    while self.is_recording:
+                        if fcnt == self.max_frames:
+                            self.logger.info(f"Stopped at frame {self.max_frames} due to AI model space")
+                            break
+
+                        self.process_frame(
+                            np.array(sct.grab(monitor)), True)
+                        
+                        self.logger.info(f"Captured frame {fcnt}")
+                        fcnt += 1
             
                 self.logger.info("Stopped Monitor Recording")
         except Exception as err:
@@ -79,6 +107,13 @@ class ScreenRecorder:
         Store base64 frame in database
         """
         self.frames.append(bframe)
+        # if not np.isin(bframe, self.frames):
+        #     self.frames.append(bframe)
+        # else:
+        #     self.logger.info("Skipping frame, already present")
+        # sql issue not waiting long enough for writes to complete
+        # and causing a sig fault when trying to access db
+        # working on fix
         # self.sqlcursor.execute(
         #     "INSERT INTO frames (record_id, frame) VALUES (?,?)",
         #     (self.record_id, bframe)

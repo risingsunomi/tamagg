@@ -53,7 +53,7 @@ class LLM:
                         transcription_text,
                         *map(lambda x: {
                             "image": x,
-                            "resize": 768
+                            # "resize": 768
                         }, sbframes[0::60]),
                     ]
                 }
