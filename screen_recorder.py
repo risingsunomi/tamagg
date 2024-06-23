@@ -9,14 +9,15 @@ import logging
 import os
 import threading
 from datetime import datetime
+from PIL import Image, ImageDraw
 
 class ScreenRecorder:
     def __init__(self, monitor_number: int=1):
         self.record_id = shortuuid.uuid()
         self.monitor_number = monitor_number
-        self.frames = []
+        self.frames: list[np.ndarray] = []
         self.max_frames = 3000
-        self.base64_frames = []
+        self.base64_frames: list[str] = []
         self.is_recording = False
         self.logger = logging.getLogger(__name__)
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -44,12 +45,12 @@ class ScreenRecorder:
 
     def process_frame(self, frame: np.ndarray, use_cuda=False):
         # process the frame and convert to base64
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-
         # cuda current not working, working on fix
+
         self.convert_frames_to_base64(frame)
-        
+
         # if use_cuda:
+        #     frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
         #     self.cuda_convert_frame_to_pybase64(frame)
         # else:
         #     # uses opencv
@@ -106,11 +107,12 @@ class ScreenRecorder:
         """
         Store base64 frame in database
         """
-        self.frames.append(bframe)
-        # if not np.isin(bframe, self.frames):
-        #     self.frames.append(bframe)
-        # else:
-        #     self.logger.info("Skipping frame, already present")
+        # self.frames.append(bframe)
+        if not np.isin(bframe, self.frames):
+            self.base64_frames.append(bframe)
+        else:
+            self.logger.info("Skipping frame, already present")
+
         # sql issue not waiting long enough for writes to complete
         # and causing a sig fault when trying to access db
         # working on fix
@@ -134,6 +136,47 @@ class ScreenRecorder:
         rows = self.sqlcursor.fetchall()
         return [row[0] for row in rows]
     
+    def frame_in_list(self, frame):
+        """
+        Check if a given frame is present in a list of frames.
+        """
+        for f in self.frames:
+            if np.array_equal(frame, f):
+                return True
+        return False
+    
+    def add_grid_overlay(self, image_array: np.ndarray, grid_size=10):
+        """
+        Adds a grid overlay to an image.
+
+        Parameters:
+        image_path (str): The path to the image file.
+        grid_size (int): The size of each grid cell.
+
+        Returns:
+        Image: The image with the grid overlay.
+        """
+        # Open the image from array
+        image = Image.fromarray(image_array)
+        draw = ImageDraw.Draw(image)
+
+        # Get image dimensions
+        width, height = image.size
+
+        # Draw vertical grid lines
+        for x in range(0, width, grid_size):
+            line = ((x, 0), (x, height))
+            draw.line(line, fill="red")
+
+        # Draw horizontal grid lines
+        for y in range(0, height, grid_size):
+            line = ((0, y), (width, y))
+            draw.line(line, fill="red")
+
+        # Convert the PIL image back to a numpy array
+        result_array = np.array(image)
+        return result_array
+        
     def cuda_convert_frame_to_pybase64(self, frame):
         self.logger.info("[cjpeg] converting frame to b64")
         self.logger.info(f"frame shape: {frame.shape}")
@@ -172,22 +215,29 @@ class ScreenRecorder:
 
         self.logger.info("conversion completed")
     
-    def convert_frames_to_base64(self, frame):
+    def convert_frames_to_base64(self, frame: np.ndarray):
         """
         Using python opencv library to encode frame to jpeg image
         then converting to base64
         """
-        self.logger.info(f"[ocv] converting frame to b64")
+        if not self.frame_in_list(frame):
+            self.frames.append(frame)
+            self.logger.info(f"[ocv] converting frame to b64")
 
-        # Encode frame to JPEG format
-        _, buffer = cv2.imencode('.jpg', frame)
-        
-        # Convert buffer to base64 and store in db
-        self.put_frame(
-            base64.b64encode(buffer).decode('utf-8')
-        )
+            # Encode frame to JPEG format
+            _, buffer = cv2.imencode('.jpg', frame)
 
-        self.logger.info("conversion completed")
+            # Add grid overlay
+            frame = self.add_grid_overlay(image_array=frame)
+            
+            # Convert buffer to base64 and store in db
+            self.put_frame(
+                base64.b64encode(buffer).decode('utf-8')
+            )
+
+            self.logger.info("conversion completed")
+        else:
+            self.logger.info("Frame already present in memory, skipping")
 
     def __del__(self):
         self.sqlconn.close()

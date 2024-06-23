@@ -17,12 +17,15 @@ class ConsoleDisplay:
     def update_display(self, ftype: str=None):
         while self.shared_buffer:
             text = self.shared_buffer.pop(0)
-            self.text_widget.insert(tk.END, text + '\n')
-
+            
             if ftype == "ai":
-                self.text_widget.configure(bg="black", fg="darkred")
-
-            self.text_widget.see(tk.END)
+                ai_text_widget = ScrolledText(self.root, wrap=tk.WORD, bg="black", fg="lime", font=("Consolas", 12), insertbackground="lime")
+                ai_text_widget.configure(bg="black", fg="darkred")
+                ai_text_widget.insert(tk.END, text + '\n')
+                ai_text_widget.see(tk.END)
+            else:
+                self.text_widget.insert(tk.END, text + '\n')
+                self.text_widget.see(tk.END)
 
     def add_text(self, text: str, ftype: str=None):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

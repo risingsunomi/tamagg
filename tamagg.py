@@ -308,6 +308,7 @@ class Tamagg:
         try:
             if not self.allow_screen_recording:
                 resp = self.llm.run(
+                    frames_wh=None,
                     sbframes=None,
                     transcription_text=self.transcriber.transcribed_text
                 )
@@ -318,7 +319,8 @@ class Tamagg:
                 # )
 
                 resp = self.llm.run(
-                    sbframes=self.screen_recorder.frames,
+                    frames_wh=self.screen_recorder.frames[0].shape,
+                    sbframes=self.screen_recorder.base64_frames,
                     transcription_text=self.transcriber.transcribed_text
                 )
             

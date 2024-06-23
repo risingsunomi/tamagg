@@ -29,6 +29,7 @@ class LLM:
 
     def run(
             self,
+            frames_wh,
             sbframes,
             transcription_text
         ) -> str:
@@ -53,7 +54,7 @@ class LLM:
                         transcription_text,
                         *map(lambda x: {
                             "image": x,
-                            # "resize": 768
+                            "resize": 768
                         }, sbframes[0::60]),
                     ]
                 }
@@ -72,7 +73,7 @@ class LLM:
             params = {
                 "model": self.gpt_model,
                 "messages": self.chat_history,
-                "temperature": 0.4,
+                "temperature": 0.7,
                 "functions": self.llmfunc.functions,
                 "function_call": self.llmfunc.function_call
             }
@@ -93,6 +94,10 @@ class LLM:
                 fname = fcall.name
                 fargs = json.loads(fcall.arguments)
                 self.logger.info(f"LLM called function '{fcall.name}'")
+                if frames_wh:
+                    self.llmfunc.image_width = frames_wh[0]
+                    self.llmfunc.image_height = frames_wh[1]
+
                 self.llmfunc.handle_call(fname, fargs)
             else:
                 response_text = response_choice.message.content
@@ -105,7 +110,7 @@ class LLM:
 
                 # Log the response to the console
                 if self.console_display:
-                    self.console_display.add_text(f"[AI] {response_text}")
+                    self.console_display.add_text(f"[Assistant] {response_text}", ftype="ai")
 
         except Exception as e:
             print(f"Error in transcribing and responding: {e}")
