@@ -23,19 +23,17 @@ class LLMFunctions:
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
         self.image_width = imgw
         self.image_height = imgh
+        self.loop_active = True  # Variable to control the loop
 
-        self.coord_trans = OpenAIImageCoordinateTranslator(
-            self.image_width,
-            self.image_height
-        )
+        self.coord_trans = None
 
         pag.FAILSAFE = False
         
         # function schema
         self.functions = [
             {
-                "name": "mouse_actions",
-                "description": "Performs a sequence of mouse actions, including moving, clicking, dragging, scrolling, and middle mouse button clicks",
+                "name": "perform_actions",
+                "description": "Performs a sequence of actions including mouse actions, keyboard actions, and bash commands",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -47,7 +45,7 @@ class LLMFunctions:
                                     "type": {
                                         "type": "string",
                                         "description": "The type of action to perform",
-                                        "enum": ["move", "click", "move_relative", "drag", "scroll", "click_scroll"]
+                                        "enum": ["move", "click", "move_relative", "drag", "scroll", "click_scroll", "type", "press", "bash", "end_loop"]
                                     },
                                     "x": {
                                         "type": "integer",
@@ -80,6 +78,19 @@ class LLMFunctions:
                                     "clicks": {
                                         "type": "integer",
                                         "description": "The number of scroll clicks for scroll action"
+                                    },
+                                    "text": {
+                                        "type": "string",
+                                        "description": "The text to type"
+                                    },
+                                    "keys": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "The keys to press"
+                                    },
+                                    "command": {
+                                        "type": "string",
+                                        "description": "The bash command to execute"
                                     }
                                 },
                                 "required": ["type"]
@@ -88,59 +99,31 @@ class LLMFunctions:
                     },
                     "required": ["actions"]
                 }
-            },
-            {
-                "name": "keyboard_typing",
-                "description": "Types a given string using the keyboard",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "text": {"type": "string", "description": "The text to type"}
-                    },
-                    "required": ["text"]
-                }
-            },
-            {
-                "name": "keyboard_press",
-                "description": "Presses a key or combination of keys",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "keys": {"type": "array", "items": {"type": "string"}, "description": "The keys to press"}
-                    },
-                    "required": ["keys"]
-                }
-            },
-            {
-                "name": "bash_command",
-                "description": "Executes a bash command in the terminal",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "command": {"type": "string", "description": "The bash command to execute"}
-                    },
-                    "required": ["command"]
-                }
             }
         ]
 
         self.function_call = "auto"
 
-    def handle_call(self, name, args):
+    def handle_call(self, name, args) -> list:
         self.logger.info(f"handle_call name: {name} args: {args}")
 
-        if name == "mouse_actions":
-            self.mouse_actions(args["actions"])
-        elif name == "keyboard_typing":
-            self.keyboard_typing(args["text"])
-        elif name == "keyboard_press":
-            self.keyboard_press(args["keys"])
-        elif name == "bash_command":
-            self.bash_command(args["command"])
+        # setup coordinate translator
+        action_response = []
+
+        self.coord_trans = OpenAIImageCoordinateTranslator(
+            self.image_width,
+            self.image_height
+        )
+
+        if name == "perform_actions":
+            action_response = self.perform_actions(args["actions"])
         else:
             self.logger.error(f"Function '{name}' not found")
+        
+        return action_response
 
-    def mouse_actions(self, actions):
+    def perform_actions(self, actions) -> list:
+        resp = []
         for action in actions:
             if action['type'] == 'move':
                 # x, y = self.coord_trans.translate_coordinates(
@@ -148,54 +131,78 @@ class LLMFunctions:
                 x, y = (action['x'], action['y'])
                 pag.moveTo(x, y)
                 self.logger.info(f"Moved mouse to ({x}, {y})")
+                resp.append(f"Moved mouse to ({x}, {y})")
                 time.sleep(1)
             elif action['type'] == 'click':
+                if "x" in action and "y" in action:
+                    # x, y = self.coord_trans.translate_coordinates(
+                    # action['x'], action['y'])
+                    x, y = (action['x'], action['y'])
+                    pag.moveTo(x, y)
+                    self.logger.info(f"Moved mouse to ({x}, {y})")
                 button = action.get('button', 'left')
                 pag.click(button=button)
                 self.logger.info(f"Clicked {button} button")
+                resp.append(f"Clicked {button} button")
                 time.sleep(1)
             elif action['type'] == 'move_relative':
-                # dx, dy = self.coord_trans.translate_coordinates(
-                #     action['dx'], action['dy'])
-                dx, dy = action['dx'], action['dy']
+                dx, dy = self.coord_trans.translate_coordinates(
+                    action['dx'], action['dy'])
+                # dx, dy = action['dx'], action['dy']
                 pag.moveRel(dx, dy)
                 self.logger.info(f"Moved mouse relative by ({dx}, {dy})")
+                resp.append(f"Moved mouse relative by ({dx}, {dy})")
                 time.sleep(1)
             elif action['type'] == 'drag':
-                # x, y = self.coord_trans.translate_coordinates(
-                #     action['x'], action['y'])
-                x, y = (action['x'], action['y'])
-                # end_x, end_y = self.coord_trans.translate_coordinates(
-                #     action['end_x'], action['end_y'])
-                end_x, end_y = (action['end_x'], action['end_y'])
+                x, y = self.coord_trans.translate_coordinates(
+                    action['x'], action['y'])
+                # x, y = (action['x'], action['y'])
+                end_x, end_y = self.coord_trans.translate_coordinates(
+                    action['end_x'], action['end_y'])
+                # end_x, end_y = (action['end_x'], action['end_y'])
                 button = action.get('button', 'left')
                 pag.mouseDown(x, y, button=button)
                 pag.moveTo(end_x, end_y)
                 pag.mouseUp(end_x, end_y, button=button)
                 self.logger.info(f"Dragged mouse from ({x}, {y}) to ({end_x}, {end_y}) with {button} button")
+                resp.append(f"Dragged mouse from ({x}, {y}) to ({end_x}, {end_y}) with {button} button")
                 time.sleep(1)
             elif action['type'] == 'scroll':
                 clicks = action.get('clicks', 1)
                 pag.scroll(clicks)
                 self.logger.info(f"Scrolled {clicks} clicks")
+                resp.append(f"Dragged mouse from ({x}, {y}) to ({end_x}, {end_y}) with {button} button")
                 time.sleep(1)
             elif action['type'] == 'click_scroll':
                 pag.middleClick()
                 self.logger.info("Clicked middle button (scroll wheel click)")
+                resp.append("Clicked middle button (scroll wheel click)")
                 time.sleep(1)
+            elif action['type'] == 'type':
+                text = action['text']
+                pag.typewrite(text)
+                self.logger.info(f"Typed text: {text}")
+                resp.append(f"Typed text: {text}")
+            elif action['type'] == 'press':
+                keys = action['keys']
+                for key in keys:
+                    pag.press(key)
+                self.logger.info(f"Pressed keys: {keys}")
+                resp.append(f"Pressed keys: {keys}")
+            elif action['type'] == 'bash':
+                command = action['command']
+                try:
+                    result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
+                    self.logger.info(f"Bash command output: {result.stdout}")
+                    resp.append(f"Bash command output: {result.stdout}")
+                except subprocess.CalledProcessError as e:
+                    self.logger.error(f"Bash command error: {e.output}")
+                    resp.append(f"Bash command error: {e.output}")
+            elif action['type'] == 'end_loop':
+                self.end_loop()
 
-    def keyboard_typing(self, text):
-        pag.typewrite(text)
-        self.logger.info(f"Typed text: {text}")
+        return resp
 
-    def keyboard_press(self, keys):
-        for key in keys:
-            pag.press(key)
-        self.logger.info(f"Pressed keys: {keys}")
-
-    def bash_command(self, command):
-        try:
-            result = subprocess.run(command, shell=True, check=True, capture_output=True, text=True)
-            return result.stdout
-        except subprocess.CalledProcessError as e:
-            return e.output
+    def end_loop(self):
+        self.loop_active = False
+        self.logger.info("Ending loop")

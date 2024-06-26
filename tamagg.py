@@ -8,11 +8,12 @@ import pyaudio
 import os
 from dotenv import load_dotenv
 from playsound import _playsoundWin
+import cv2
 
-from audio_recorder import AudioRecorder
 from transcriber import Transcriber
 from console_display import ConsoleDisplay
 from screen_recorder import ScreenRecorder
+from cam_recorder import CamRecorder
 from llm import LLM
 from tts import TTS
 
@@ -31,12 +32,19 @@ class Tamagg:
         self.transcriber = Transcriber()
         self.console_display = ConsoleDisplay(self.root)
         self.screen_recorder = None
+        self.cam_recorder =  None
         self.allow_screen_recording = True
         self.llm = LLM(console_display=self.console_display)
         self.tts = TTS(console_display=self.console_display)
         self.tts_thread = None
         self.microphone_index = None
+        self.monitor_number = 0
+        self.webcam_index = 0
+        self.use_webcam = False
 
+        # agent management
+        self.is_agent = False
+        self.agent_loop = 1
 
         # Thread management
         self.audio_rec_thread = None
@@ -109,8 +117,7 @@ class Tamagg:
 
         # Monitor select dropdown with dark theme
         self.monitor_var = tk.StringVar(value="All Monitors -1")
-        self.monitor_list = [f"Monitor {i}" for i in range(1, len(mss.mss().monitors))]
-        self.monitor_list = ["All Monitors -1"] + self.monitor_list
+        self.monitor_list = self.get_monitor_and_webcam_list()
         self.monitor_dropdown = ttk.Combobox(
             self.root, 
             textvariable=self.monitor_var, 
@@ -120,6 +127,7 @@ class Tamagg:
         self.monitor_dropdown.configure(
             font=("Consolas", 10)
         )
+        self.monitor_dropdown.bind("<<ComboboxSelected>>", self.select_monitor_or_webcam)
 
         # Status label
         self.status_label = tk.Label(
@@ -173,6 +181,34 @@ class Tamagg:
         # Configure the root window to display the menubar
         self.root.config(menu=menubar)
 
+        self.console_display.add_text("AI Assistant Started")
+    
+    def get_monitor_and_webcam_list(self):
+        monitors = [f"Monitor {i}" for i in range(1, len(mss.mss().monitors))]
+        webcams = []
+
+        # Get list of available webcams
+        index = 0
+        while index < 6:
+            self.logger.info(f"Check cam index {index}")
+            cap = cv2.VideoCapture(index)
+            if cap.read()[0]:
+                webcams.append(f"Webcam {index}")
+                cap.release()
+            index += 1
+
+        return ["All Monitors -1"] + monitors + webcams
+
+    def select_monitor_or_webcam(self, event):
+        selected_item = self.monitor_var.get()
+        if selected_item.startswith("Monitor"):
+            self.monitor_number = int(selected_item.split(" ")[1])
+            self.use_webcam = False
+        elif selected_item.startswith("Webcam"):
+            self.webcam_index = int(selected_item.split(" ")[1])
+            self.use_webcam = True
+        print(f"Selected: {selected_item}")
+
     def get_microphone_list(self):
         p = pyaudio.PyAudio()
         mic_list = []
@@ -213,45 +249,57 @@ class Tamagg:
             self.tts.stop_audio()
 
         # record monitor
-        if self.allow_screen_recording:
+        if not self.use_webcam and self.allow_screen_recording:
             # get monitor selection and start
-            monitor_number = int(self.monitor_var.get().split()[-1])
-            
-            if monitor_number > 0:
+            if self.monitor_number > 0:
                 self.console_display.add_text(
-                    f"[System] Screen Recording Started on Monitor {monitor_number}",
+                    f"Screen Recording Started on Monitor {self.monitor_number}",
                     "system"
                 )
             else:
                 self.console_display.add_text(
-                    f"[System] Screen Recording Started on all monitors",
+                    f"Screen Recording Started on all monitors",
                     "system"
                 )
 
             self.logger.info("Starting screen recording thread")
 
-            self.screen_recorder = ScreenRecorder(monitor_number)
+            self.screen_recorder = ScreenRecorder(self.monitor_number)
             self.video_rec_thread = threading.Thread(
                 target=self.screen_recorder.start_recording)
             self.video_rec_thread.start()
+        elif self.use_webcam:
+            self.console_display.add_text(
+                f"Camera Recording Started on Camera {self.webcam_index}",
+                "system"
+            )
+            
+            self.logger.info("Starting camera recording thread")
+            self.cam_recorder = CamRecorder(self.webcam_index)
+            self.video_rec_thread = threading.Thread(
+                target=self.cam_recorder.start_recording)
+            self.video_rec_thread.start()
+
         
         # start mic and record for transcribe
         self.console_display.add_text(
-            "[System] Audio and Transcribing Started",
+            "Audio and Transcribing Started",
             "system"
         )
         self.logger.info("Starting record_transcribe thread")
 
+        
         self.audio_rec_thread = threading.Thread(
             target=self.transcriber.record_transcribe)
         self.audio_rec_thread.start()
+        
 
         self.start_stop_button.config(text="Stop Recording", style='Red.TButton')
         
     def stop_recording(self):
         self.update_status("Stopping Recording & Transcribing...")
         self.logger.info("Stopping Recording & Transcribing...")
-        self.console_display.add_text("[System] Stopping recordings...")
+        self.console_display.add_text("Stopping recordings...")
 
         self.logger.info("Changing to Processing button...")        
         self.start_stop_button.config(text="Processing...", style='Gray.TButton')
@@ -266,49 +314,83 @@ class Tamagg:
 
         self.is_recording = False
 
-        if self.allow_screen_recording:
-            
+        if not self.use_webcam and self.allow_screen_recording:
             self.logger.info("self.screen_recorder.stop_recording()")
             self.screen_recorder.stop_recording()
+        
             self.logger.info("self.video_rec_thread.join()")
             self.video_rec_thread.join(timeout=10)
 
             self.console_display.add_text(
-                f"[System] Screen Recording Stopped\n{len(self.screen_recorder.frames)} frames captured",
+                f"Screen Recording Stopped\n{len(self.screen_recorder.frames)} frames captured",
+                "system"
+            )
+        elif self.use_webcam:
+            self.logger.info("self.cam_recorder.stop_recording()")
+            self.cam_recorder.stop_recording()
+        
+            self.logger.info("self.video_rec_thread.join()")
+            self.video_rec_thread.join(timeout=10)
+
+            self.console_display.add_text(
+                f"Screen Recording Stopped\n{len(self.cam_recorder.frames)} frames captured",
                 "system"
             )
 
         self.logger.info("self.audio_rec_thread.join()")
+        
         self.transcriber.audio_recorder.stop()
-        self.audio_rec_thread.join()
+        self.audio_rec_thread.join(timeout=15)
+        
+        
+        
 
         self.console_display.add_text(
-            "[System] Audio and Transcribing Stopped",
+            "Audio and Transcribing Stopped",
             "system"
         )
         self.update_status("Recording stopped")
         self.logger.info("Recording stopped")
 
-        self.console_display.add_text(f"[User] {self.transcriber.transcribed_text}")
-        self.ai_thread = threading.Thread(target=self.process_ai_assistant)
-        self.ai_thread.start()
+        self.console_display.add_text(f"{self.transcriber.transcribed_text}", ftype="user")
+        
+        if self.is_agent:
+            self.ai_thread = threading.Thread(target=self._loop_process_ai_assistant)
+        else:
+            self.ai_thread = threading.Thread(target=self.process_ai_assistant)
 
-        # Update the UI in the main thread
-        self.start_stop_button.after(0, self._update_button_to_start)
+        self.ai_thread.start()
 
     def _update_button_to_start(self):
         self.logger.info("Changing to Start button...")
         self.start_stop_button.config(text="Start Recording", style='Green.TButton')
         self.start_stop_button.config(state='normal')
 
+    def _loop_process_ai_assistant(self):
+        while self.llm.llmfunc.loop_active and self.is_agent:
+            self.logger.info("looping assistant")
+
+            # get a screen capture
+            if self.allow_screen_recording and self.agent_loop > 1:
+                monitor_number = int(self.monitor_var.get().split()[-1])
+                self.screen_recorder = ScreenRecorder(monitor_number)
+                self.screen_recorder.get_frame()
+
+            self.process_ai_assistant()
+            self.agent_loop += 1
+            time.sleep(2)
+        
+        self.agent_loop = 0 # reset for next loop
+        self.is_agent = False
+
     def process_ai_assistant(self):
-        self.console_display.add_text("[System] Interfacing with AI...", "system")
+        self.console_display.add_text("Interfacing with AI...", "system")
         self.logger.info("processing ai assistant")
         self.logger.info(f"transcription_text: {self.transcriber.transcribed_text}")
         try:
             if not self.allow_screen_recording:
                 resp = self.llm.run(
-                    frames_wh=None,
+                    frames_hw=None,
                     sbframes=None,
                     transcription_text=self.transcriber.transcribed_text
                 )
@@ -318,15 +400,21 @@ class Tamagg:
                 #     transcription_text=self.transcriber.transcribed_text
                 # )
 
-                resp = self.llm.run(
-                    frames_wh=self.screen_recorder.frames[0].shape,
-                    sbframes=self.screen_recorder.base64_frames,
-                    transcription_text=self.transcriber.transcribed_text
-                )
+                if not self.use_webcam:
+                    resp = self.llm.run(
+                        frames_hw=self.screen_recorder.frames[0].shape,
+                        sbframes=self.screen_recorder.base64_frames,
+                        transcription_text=self.transcriber.transcribed_text
+                    )
+                elif self.use_webcam:
+                    resp = self.llm.run(
+                        frames_hw=self.cam_recorder.frames[0].shape,
+                        sbframes=self.cam_recorder.base64_frames,
+                        transcription_text=self.transcriber.transcribed_text
+                    )
             
             # clear frames and text
             self.transcriber.transcribed_text = ""
-            self.screen_recorder.frames = []
 
             if resp:
                 self.tts_thread = threading.Thread(
@@ -336,9 +424,14 @@ class Tamagg:
                 self.tts_thread.join()
 
             self.logger.info("done processing")
+
+            if not self.is_agent:
+                # Update the UI in the main thread with start recording btn
+                self.start_stop_button.after(0, self._update_button_to_start)
+
         except Exception as err:
             self.update_status("Error with LLM! Please retry...", error=True)
-            self.console_display.add_text("[System] Error with LLM! Please try again...")
+            self.console_display.add_text("Error with LLM! Please try again...")
             self.logger.error(err)
 
     def update_status(self, message, error=False):
@@ -349,11 +442,17 @@ class Tamagg:
 
     def on_closing(self):
         if self.tts.is_playing:
+            if self.tts_thread.is_alive:
+                self.tts_thread.join(timeout=1)
+            
             self.tts.stop_audio()
 
         if self.screen_recorder:
-            self.screen_recorder.nvjpeg.cleanup_nvjpeg()
-            os.remove(self.screen_recorder.sqldb)
+            if self.video_rec_thread.is_alive:
+                self.video_rec_thread.join(timeout=1)
+            self.screen_recorder.stop_recording()
+            # self.screen_recorder.nvjpeg.cleanup_nvjpeg()
+            # os.remove(self.screen_recorder.sqldb)
         
         self.root.quit()
         self.root.destroy()

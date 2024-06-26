@@ -25,6 +25,7 @@ class Transcriber:
             raise e
         
     def record_transcribe(self):
+        
         try:
             for audio_data in self.audio_recorder.record():
                 self.logger.info(

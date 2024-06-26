@@ -6,9 +6,11 @@ import numpy as np
 import cv2
 from mss import mss
 from screen_recorder import ScreenRecorder
+import logging
 
 class TestScreenRecorder(unittest.TestCase):
     def setUp(self):
+        logging.basicConfig(level=logging.INFO)
         self.screen_recorder_instance = ScreenRecorder()
 
     # def test_cuda_convert_frame_to_pybase64(self):
@@ -22,7 +24,7 @@ class TestScreenRecorder(unittest.TestCase):
     #     # Convert the frame to base64
     #     try:
     #         self.screen_recorder_instance.cuda_convert_frame_to_pybase64(frame)
-    #         base64_image = self.screen_recorder_instance.frames[0]
+    #         base64_image = self.screen_recorder_instance.base64_frames[0]
 
     #         # Decode the base64 image back to bytes
     #         jpeg_image = base64.b64decode(base64_image)
@@ -64,7 +66,7 @@ class TestScreenRecorder(unittest.TestCase):
         # Convert the frame to base64
         try:
             self.screen_recorder_instance.convert_frames_to_base64(frame)
-            base64_image = self.screen_recorder_instance.frames[0]
+            base64_image = self.screen_recorder_instance.base64_frames[0]
 
             # Decode the base64 image back to bytes
             jpeg_image = base64.b64decode(base64_image)
@@ -82,7 +84,7 @@ class TestScreenRecorder(unittest.TestCase):
             # cv2.destroyAllWindows()
 
             # Save the image to a local data folder
-            output_folder = "data/"
+            output_folder = "tests/data/"
             output_path = os.path.join(output_folder, 'ocv_decoded_image.jpg')
             cv2.imwrite(output_path, img_np)
 

@@ -7,7 +7,6 @@ import logging
 import pyautogui as pag
 import numpy as np
 
-
 class OpenAIImageCoordinateTranslator:
     def __init__(self, original_width, original_height, quality='high'):
         """
@@ -60,11 +59,11 @@ class OpenAIImageCoordinateTranslator:
         if self.quality == 'high':
             min_dimension = min(temp_width, temp_height)
             scale_factor = 768 / min_dimension
-            resized_width = temp_width * scale_factor
-            resized_height = temp_height * scale_factor
+            resized_width = np.floor(temp_width * scale_factor)
+            resized_height = np.floor(temp_height * scale_factor)
         else:
-            resized_width = temp_width
-            resized_height = temp_height
+            resized_width = np.floor(temp_width)
+            resized_height = np.floor(temp_height)
 
         return resized_width, resized_height
 

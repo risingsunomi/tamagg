@@ -9,7 +9,9 @@ import logging
 import os
 import threading
 from datetime import datetime
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
+
+from oai_ict import OpenAIImageCoordinateTranslator
 
 class ScreenRecorder:
     def __init__(self, monitor_number: int=1):
@@ -23,25 +25,25 @@ class ScreenRecorder:
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
 
         # Load NVJPEG shared library
-        self.nvjpeg = ctypes.CDLL('./clib/libnvjpeg_encoder.so')
-        self.nvjpeg.initialize_nvjpeg()
+        # self.nvjpeg = ctypes.CDLL('./clib/libnvjpeg_encoder.so')
+        # self.nvjpeg.initialize_nvjpeg()
 
         # setup sqlite for desk storage of frames for longer recordings
-        cdate = datetime.now().strftime("%Y%d%m_%H%M%S")
-        self.sqldb = f"{self.root_dir}/data/sr{cdate}.sql"
-        self.sqlconn = sqlite3.connect(
-            self.sqldb,
-            check_same_thread=False
-        )
-        self.sqlcursor = self.sqlconn.cursor()
+        # cdate = datetime.now().strftime("%Y%d%m_%H%M%S")
+        # self.sqldb = f"{self.root_dir}/data/sr{cdate}.sql"
+        # self.sqlconn = sqlite3.connect(
+        #     self.sqldb,
+        #     check_same_thread=False
+        # )
+        # self.sqlcursor = self.sqlconn.cursor()
         
-        try:
-            self.sqlcursor.execute(
-                """ CREATE TABLE frames (
-                    id INTEGER PRIMARY KEY, record_id TEXT, frame BLOB
-                )""")
-        except sqlite3.OperationalError:
-            pass
+        # try:
+        #     self.sqlcursor.execute(
+        #         """ CREATE TABLE frames (
+        #             id INTEGER PRIMARY KEY, record_id TEXT, frame BLOB
+        #         )""")
+        # except sqlite3.OperationalError:
+        #     pass
 
     def process_frame(self, frame: np.ndarray, use_cuda=False):
         # process the frame and convert to base64
@@ -103,10 +105,33 @@ class ScreenRecorder:
         self.is_recording = False
         # self.frames = self.get_frames()
 
+    def get_frame(self):
+        with mss.mss() as sct:
+            if self.monitor_number == -1 and len(sct.monitors) >= 3:
+                screen_caps = [np.array(sct.grab(sct.monitors[i])) for i in range(1, len(sct.monitors))]
+                # hstack
+                combined_monitors = np.hstack(tuple(screen_caps))
+
+                # process
+                self.process_frame(
+                    combined_monitors,
+                    True
+                )
+            else:
+                if self.monitor_number == -1:
+                    self.monitor_number == 1
+
+                monitor = sct.monitors[self.monitor_number]
+                self.process_frame(
+                    np.array(sct.grab(monitor)), True)
+                    
+            
+
     def put_frame(self, bframe):
         """
         Store base64 frame in database
         """
+        self.logger.info("Adding frame")
         # self.frames.append(bframe)
         if not np.isin(bframe, self.frames):
             self.base64_frames.append(bframe)
@@ -123,18 +148,18 @@ class ScreenRecorder:
 
         # self.sqlconn.commit()
 
-    def get_frames(self):
-        """
-        Get frames from database per record_id
-        """
-        self.logger.info(f"getting frames for recording {self.record_id}")
-        self.sqlcursor.execute(
-            "SELECT frame FROM frames WHERE record_id=?",
-            (self.record_id,)
-        )
+    # def get_frames(self):
+    #     """
+    #     Get frames from database per record_id
+    #     """
+    #     self.logger.info(f"getting frames for recording {self.record_id}")
+    #     self.sqlcursor.execute(
+    #         "SELECT frame FROM frames WHERE record_id=?",
+    #         (self.record_id,)
+    #     )
         
-        rows = self.sqlcursor.fetchall()
-        return [row[0] for row in rows]
+    #     rows = self.sqlcursor.fetchall()
+    #     return [row[0] for row in rows]
     
     def frame_in_list(self, frame):
         """
@@ -145,37 +170,81 @@ class ScreenRecorder:
                 return True
         return False
     
-    def add_grid_overlay(self, image_array: np.ndarray, grid_size=10):
+    def add_grid_overlay(self, image_array: np.ndarray, grid_size=100) -> np.ndarray:
         """
-        Adds a grid overlay to an image.
+        Adds a grid overlay to an image with coordinates at each intersection.
 
         Parameters:
-        image_path (str): The path to the image file.
+        image_array (np.ndarray): The image array.
         grid_size (int): The size of each grid cell.
 
         Returns:
-        Image: The image with the grid overlay.
+        np.ndarray: The image with the grid overlay and coordinates.
         """
+        # Ensure image is in RGB mode
+        if image_array.shape[2] == 4:
+            image_array = cv2.cvtColor(image_array, cv2.COLOR_BGRA2BGR)
+        
         # Open the image from array
         image = Image.fromarray(image_array)
         draw = ImageDraw.Draw(image)
+        font = ImageFont.load_default(15)  # Set the font and size
 
         # Get image dimensions
         width, height = image.size
 
         # Draw vertical grid lines
         for x in range(0, width, grid_size):
-            line = ((x, 0), (x, height))
-            draw.line(line, fill="red")
-
+            draw.line(((x, 0), (x, height)), fill="red", width=1)
+        
         # Draw horizontal grid lines
         for y in range(0, height, grid_size):
-            line = ((0, y), (width, y))
-            draw.line(line, fill="red")
+            draw.line(((0, y), (width, y)), fill="red", width=1)
+        
+        # Draw coordinates at intersections
+        for x in range(0, width, grid_size):
+            for y in range(0, height, grid_size):
+                draw.text((x, y), f"{x},{y}", fill="blue", font=font)
 
         # Convert the PIL image back to a numpy array
         result_array = np.array(image)
         return result_array
+
+
+
+    
+    def oai_resize_image(self, frame: np.ndarray) -> np.ndarray:
+        """
+        Resizes the image to OpenAI format.
+
+        Parameters:
+        frame (np.ndarray): The input image array.
+
+        Returns:
+        np.ndarray: The resized image array.
+        """
+        # resize to openai format
+        oai_coord = OpenAIImageCoordinateTranslator(
+            original_width=frame.shape[1],
+            original_height=frame.shape[0]
+        )
+
+        resized_width, resized_height = oai_coord.calculate_resized_dimensions()
+
+        self.logger.info(f"Resizing to {resized_width}x{resized_height}")
+        
+        img = Image.fromarray(frame)
+        resized_img = img.resize((int(resized_width), int(resized_height)), Image.Resampling.LANCZOS)
+
+        try:
+            resized_array = np.array(resized_img)
+        except Exception as err:
+            self.logger.error("np.array failed", exc_info=err)
+            raise
+
+        return resized_array
+
+
         
     def cuda_convert_frame_to_pybase64(self, frame):
         self.logger.info("[cjpeg] converting frame to b64")
@@ -224,12 +293,15 @@ class ScreenRecorder:
             self.frames.append(frame)
             self.logger.info(f"[ocv] converting frame to b64")
 
+            # Add grid overlay
+            frame = self.add_grid_overlay(image_array=frame)
+
+            # resize to oai
+            frame = self.oai_resize_image(frame)
+
             # Encode frame to JPEG format
             _, buffer = cv2.imencode('.jpg', frame)
 
-            # Add grid overlay
-            frame = self.add_grid_overlay(image_array=frame)
-            
             # Convert buffer to base64 and store in db
             self.put_frame(
                 base64.b64encode(buffer).decode('utf-8')
@@ -239,5 +311,5 @@ class ScreenRecorder:
         else:
             self.logger.info("Frame already present in memory, skipping")
 
-    def __del__(self):
-        self.sqlconn.close()
+    # def __del__(self):
+        # self.sqlconn.close()
