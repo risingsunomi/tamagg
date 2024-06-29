@@ -23,6 +23,7 @@ class ScreenRecorder:
         self.is_recording = False
         self.logger = logging.getLogger(__name__)
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
+        self.sampled_coords = []
 
         # Load NVJPEG shared library
         # self.nvjpeg = ctypes.CDLL('./clib/libnvjpeg_encoder.so')
@@ -124,8 +125,7 @@ class ScreenRecorder:
                 monitor = sct.monitors[self.monitor_number]
                 self.process_frame(
                     np.array(sct.grab(monitor)), True)
-                    
-            
+                
 
     def put_frame(self, bframe):
         """
@@ -170,7 +170,36 @@ class ScreenRecorder:
                 return True
         return False
     
-    def add_grid_overlay(self, image_array: np.ndarray, grid_size=100) -> np.ndarray:
+    def add_transparent_text(
+            self,
+            image, 
+            text, 
+            position, 
+            font_scale, 
+            font_color, 
+            font_thickness, 
+            alpha):
+        """
+        Add transparent text to an RGBA image.
+
+        Parameters:
+        - image: The original RGBA image as a NumPy array.
+        - text: The text to add.
+        - position: (x, y) coordinates for the text position.
+        - font_scale: Scale of the font.
+        - font_color: Color of the text in (B, G, R) format.
+        - font_thickness: Thickness of the font.
+        - alpha: Transparency factor of the text (0.0 to 1.0).
+
+        Returns:
+        - image with transparent text.
+        """
+        overlay = image.copy()
+        cv2.putText(overlay, text, position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, font_color, font_thickness, cv2.LINE_AA)
+        cv2.addWeighted(overlay, alpha, image, 1 - alpha, 0, image)
+        return image
+    
+    def add_grid_overlay(self, image_array: np.ndarray, grid_size=60) -> np.ndarray:
         """
         Adds a grid overlay to an image with coordinates at each intersection.
 
@@ -182,35 +211,46 @@ class ScreenRecorder:
         np.ndarray: The image with the grid overlay and coordinates.
         """
         # Ensure image is in RGB mode
+        self.logger.info(f"image_array.shape {image_array.shape}")
         if image_array.shape[2] == 4:
             image_array = cv2.cvtColor(image_array, cv2.COLOR_BGRA2BGR)
-        
-        # Open the image from array
-        image = Image.fromarray(image_array)
-        draw = ImageDraw.Draw(image)
-        font = ImageFont.load_default(15)  # Set the font and size
 
         # Get image dimensions
-        width, height = image.size
-
-        # Draw vertical grid lines
-        for x in range(0, width, grid_size):
-            draw.line(((x, 0), (x, height)), fill="red", width=1)
-        
-        # Draw horizontal grid lines
-        for y in range(0, height, grid_size):
-            draw.line(((0, y), (width, y)), fill="red", width=1)
-        
-        # Draw coordinates at intersections
-        for x in range(0, width, grid_size):
-            for y in range(0, height, grid_size):
-                draw.text((x, y), f"{x},{y}", fill="blue", font=font)
+        height, width, _ = image_array.shape
 
         # Convert the PIL image back to a numpy array
-        result_array = np.array(image)
-        return result_array
+        # result_array = np.array(image)
 
+        # Draw coordinates at intersections
+        # Using opencv for transparent text
 
+        text_positions = [(x, y) for x in range(0, width, grid_size) for y in range(0, height, grid_size)]
+        text_list = [f"{x},{y}" for x, y in text_positions]
+
+        # Draw coordinates at intersections using add_transparent_text method
+        for pos, text in zip(text_positions, text_list):
+            image_array = self.add_transparent_text(
+                image_array, 
+                text, 
+                (pos[0], pos[1]), 
+                0.4, 
+                (255, 255, 255, 255), 
+                1, 
+                0.1)
+        
+        # for x in range(0, width, grid_size):
+        #     for y in range(0, height, grid_size):
+        #         image_array = self.add_transparent_text(
+        #             image_array, 
+        #             f"{x},{y}", 
+        #             (x, y), 
+        #             0.4, 
+        #             (255, 255, 255, 255),
+        #             1,
+        #             0.1
+        #         )
+        
+        return image_array
 
     
     def oai_resize_image(self, frame: np.ndarray) -> np.ndarray:
