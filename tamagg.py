@@ -7,7 +7,6 @@ import time
 import pyaudio
 import os
 from dotenv import load_dotenv
-from playsound import _playsoundWin
 import cv2
 
 from transcriber import Transcriber
