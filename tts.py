@@ -116,4 +116,9 @@ class TTS:
             self.is_playing = False
             self.playback.stop()
             self.logger.info(f"removing {self.audio_path}")
-            # os.remove(self.audio_path)
+            
+            try:
+                os.remove(self.audio_path)
+            except Exception as err:
+                self.logger.error(f"Removing {self.audio_path} failed: {err}")
+            

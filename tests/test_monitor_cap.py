@@ -1,12 +1,12 @@
 import unittest
-import mss
 import numpy as np
 import cv2  # Used here just for displaying the image, optional
+import mss
 
 class TestMonitorCapture(unittest.TestCase):
     def test_all_monitors(self):
         # Initialize mss
-        with mss.mss() as sct:
+        with mss() as sct:
             # List of all monitors
             monitors = sct.monitors
 
@@ -29,9 +29,13 @@ class TestMonitorCapture(unittest.TestCase):
     
     def test_one_monitors(self):
         # Initialize mss
-        with mss.mss() as sct:
+        with mss() as sct:
             # List of all monitors
             monitors = sct.monitors
-            screen1 = np.array(sct.grab(monitors[1]))
+            screen = np.array(sct.grab(monitors[2]))
 
-            self.assertNotEqual(screen1.size, 0)
+            cv2.imshow('Screen', screen)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
+            self.assertNotEqual(screen.size, 0)

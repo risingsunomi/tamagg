@@ -27,19 +27,23 @@ class Tamagg:
         self.root = root
         self.root.title("TAMAGG [ALPHA]")
         self.root.configure(bg='black')
-        self.is_recording = False
-        
         self.transcriber = Transcriber()
         self.console_display = ConsoleDisplay(self.root)
-        self.screen_recorder = None
-        self.cam_recorder =  None
-        self.allow_screen_recording = True
         self.llm = LLM(console_display=self.console_display)
         self.tts = TTS(console_display=self.console_display)
+
+        self.screen_recorder = None
+        self.cam_recorder =  None
         self.tts_thread = None
         self.microphone_index = None
         self.monitor_number = 0
         self.webcam_index = 0
+        self.screen_record_var = 0
+        self.eav_var = 0
+
+        self.is_recording = False
+        self.allow_screen_recording = True
+        self.enable_assistant_voice = True
         self.use_webcam = False
 
         # agent management
@@ -58,6 +62,9 @@ class Tamagg:
         self.style = ttk.Style()
         self.style.theme_use('clam')
 
+        # --------------------------
+        # Styling
+        # --------------------------
         self.style.configure(
             'TButton', 
             background='green', 
@@ -104,31 +111,28 @@ class Tamagg:
             background=[('active', 'gray')], 
             foreground=[('active', 'white')]
         )
-        
-        
+        # --------------------------
+
+        # --------------------------
+        # Buttons
+        # --------------------------
+
+        # Start/Stop button
         self.start_stop_button = ttk.Button(
             self.root, 
-            text="Start Recording", 
+            text="Record", 
             command=self.toggle_recording, 
             style='Green.TButton'
         )
         self.start_stop_button.grid(row=1, column=0, padx=10, pady=10, sticky="se")
         self.root.bind('<Control-r>', self.toggle_recording)
 
-        # Monitor select dropdown with dark theme
-        self.monitor_var = tk.StringVar(value="All Monitors -1")
-        self.monitor_list = self.get_monitor_and_webcam_list()
-        self.monitor_dropdown = ttk.Combobox(
-            self.root, 
-            textvariable=self.monitor_var, 
-            values=self.monitor_list
-        )
-        self.monitor_dropdown.grid(row=2, column=2, padx=10, pady=10, sticky="e")
-        self.monitor_dropdown.configure(
-            font=("Consolas", 10)
-        )
-        self.monitor_dropdown.bind("<<ComboboxSelected>>", self.select_monitor_or_webcam)
+        # --------------------------
 
+        # --------------------------
+        # Labels/Text
+        # --------------------------
+        
         # Status label
         self.status_label = tk.Label(
             self.root, 
@@ -138,7 +142,8 @@ class Tamagg:
         )
         self.status_label.grid(
             row=2, column=0, columnspan=2, sticky="sw", padx=10, pady=10)
-
+        
+        # Console Display
         # Make the console display resizable
         self.console_display.text_widget.grid(
             row=0, column=0, columnspan=3, padx=10, pady=10, sticky="nsew")
@@ -147,42 +152,116 @@ class Tamagg:
         self.root.grid_columnconfigure(1, weight=0)
         self.root.grid_columnconfigure(2, weight=0)
 
-        # Microphone select dropdown
-        self.microphone_var = tk.StringVar()
-        self.microphone_list = self.get_microphone_list()
-        self.microphone_var.set(self.microphone_list[0])
-        self.microphone_dropdown = ttk.Combobox(
-            self.root, 
-            textvariable=self.microphone_var, 
-            values=self.microphone_list
-        )
-        self.microphone_dropdown.grid(
-            row=1, column=2, padx=10, pady=10, sticky="e")
-        self.microphone_dropdown.bind(
-            "<<ComboboxSelected>>", self.select_microphone)
+        # --------------------------
+        # Menu
+        # --------------------------
 
-        # enable/disable screen recording
-        self.screen_record_var = tk.IntVar(value=True)
-        self.screen_record_checkbox = tk.Checkbutton(
-            self.root, 
-            text='Allow Screen Recording', 
-            variable=self.screen_record_var,
-            command=self.toggle_screen_recording)
-        self.screen_record_checkbox.grid(
-            row=1, column=1, columnspan=1, padx=10, pady=10, sticky="sw")
-
-        # File menu
         menubar = tk.Menu(self.root)
         menubar.configure(bg="black", fg="lime")
+        
+        # = File menu
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Quit", command=self.on_closing)
         menubar.add_cascade(label="File", menu=file_menu)
+        # == Quit
+        file_menu.add_command(label="Quit", command=self.on_closing)
+
+        # = Options menu
+        options_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Options", menu=options_menu)
+        
+        # == Screen recording option
+        self.screen_record_var = tk.IntVar(value=True)
+        options_menu.add_checkbutton(
+            label='Allow Screen Recording', 
+            variable=self.screen_record_var,
+            command=self.toggle_screen_recording
+        )
+
+        # == Assistant voice option
+        self.eav_var = tk.IntVar(value=True)
+        options_menu.add_checkbutton(
+            label='Enable Assistant Voice', 
+            variable=self.eav_var,
+            command=self.toggle_eav
+        )
+
+        # = Monitors/Webcams menu
+        monitors_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Select Monitors/Webcams", menu=monitors_menu)
+
+        # == Monitors and Webcam options
+        self.monitor_list = self.get_monitor_and_webcam_list()
+        self.monitor_var = tk.StringVar(value=self.monitor_list[0] if self.monitor_list else "")
+        for monitor in self.monitor_list:
+            monitors_menu.add_radiobutton(
+                label=monitor,
+                variable=self.monitor_var,
+                value=monitor,
+                command=self.select_monitor_or_webcam,
+            )
+
+        # = Microphones menu
+        microphones_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Select Microphones", menu=microphones_menu)
+
+        # == Microphone options
+        self.microphone_list = self.get_microphone_list()
+        self.microphone_var = tk.StringVar(value=self.microphone_list[0] if self.monitor_list else "")
+        self.microphone_var.set(self.microphone_list[0])
+        for microphone in self.microphone_list:
+            microphones_menu.add_radiobutton(
+                label=microphone,
+                variable=self.microphone_var,
+                value=microphone,
+                command=self.select_microphone
+            )
 
         # Configure the root window to display the menubar
         self.root.config(menu=menubar)
 
-        self.console_display.add_text("AI Assistant Started")
+        # -----------------------------
+
+        self.console_display.add_text("AI Assistant Initialized. Hello!")
+
+        if platform.system().lower() == "windows":
+            self.show_popup(
+                "!! Windows User Warning !!",
+                "Windows users might have an issue with monitor numbering being backwards. This means monitor 1 will be monitor 2 and other such cases. Fix/workaround in the works."
+            )
     
+    def show_popup(self, title, content):
+        """
+        Show a popup with a title and the content
+
+        Parameters:
+        - title: text title of popup
+        - content: text content of popup
+
+        Returns:
+        - None
+        """
+        popup = tk.Toplevel(self.root)
+        popup.title(title)
+        popup.geometry("400x150")  # Set a fixed size for the window
+        popup.resizable(False, False)  # Make the window non-resizable
+        popup.transient(root)  # Make it transient to the main window
+
+        frame = tk.Frame(popup)
+        frame.pack(expand=True, fill='both', padx=10, pady=10)
+
+        tk.Label(
+            frame,
+            text=content,
+            font=("Consolas", 10),
+            wraplength=380,  # Adjust this value based on your window width
+            justify='center'
+        ).pack(expand=True, fill='both')
+
+        popup.lift()
+        popup.attributes('-topmost', True)
+        popup.focus_force()  # Force focus on the pop-up
+        popup.after_idle(popup.attributes, '-topmost', False)
+
     def get_monitor_and_webcam_list(self):
         monitors = [f"Monitor {i}" for i in range(1, len(mss.mss().monitors))]
         webcams = []
@@ -202,9 +281,9 @@ class Tamagg:
                 cap.release()
             index += 1
 
-        return ["All Monitors -1"] + monitors + webcams
+        return ["All Monitors 0"] + monitors + webcams
 
-    def select_monitor_or_webcam(self, event):
+    def select_monitor_or_webcam(self):
         selected_item = self.monitor_var.get()
         if selected_item.startswith("Monitor"):
             self.monitor_number = int(selected_item.split(" ")[1])
@@ -223,7 +302,7 @@ class Tamagg:
                 mic_list.append(f"{i}: {device_info['name']}")
         return mic_list
 
-    def select_microphone(self, event):
+    def select_microphone(self):
         selected_mic = self.microphone_var.get()
         self.microphone_index = int(selected_mic.split(":")[0])
         print(f"Selected microphone index: {self.microphone_index}")
@@ -242,9 +321,13 @@ class Tamagg:
 
     def toggle_screen_recording(self):
         self.allow_screen_recording = bool(self.screen_record_var.get())
+
+    def toggle_eav(self):
+        self.enable_assistant_voice = bool(self.eav_var.get())
     
     def start_recording(self):
         self.update_status("Recording & Transcribing...")
+        self.console_display.add_text(f"Recording from {self.microphone_var.get()} and {self.monitor_var.get()}")
         self.logger.info("Recording & Transcribing...")
         self.is_recording = True
 
@@ -299,15 +382,15 @@ class Tamagg:
         self.audio_rec_thread.start()
         
 
-        self.start_stop_button.config(text="Stop Recording", style='Red.TButton')
+        self.start_stop_button.config(text="Stop", style='Red.TButton')
         
     def stop_recording(self):
-        self.update_status("Stopping Recording & Transcribing...")
+        self.update_status("Stopping Recording & Transcribing")
         self.logger.info("Stopping Recording & Transcribing...")
         self.console_display.add_text("Stopping recordings...")
 
-        self.logger.info("Changing to Processing button...")        
-        self.start_stop_button.config(text="Processing...", style='Gray.TButton')
+        self.logger.debug("Changing to Processing button...")        
+        self.start_stop_button.config(text="Record", style='Gray.TButton')
         self.start_stop_button.config(state='disabled')
 
         processing_thread = threading.Thread(target=self._process_stop_recording)
@@ -327,7 +410,7 @@ class Tamagg:
             self.video_rec_thread.join(timeout=10)
 
             self.console_display.add_text(
-                f"Screen Recording Stopped\n{len(self.screen_recorder.frames)} frames captured",
+                f"Screen Recording Stopped\n{len(self.screen_recorder.base64_frames)} frames captured",
                 "system"
             )
         elif self.use_webcam:
@@ -338,7 +421,7 @@ class Tamagg:
             self.video_rec_thread.join(timeout=10)
 
             self.console_display.add_text(
-                f"Screen Recording Stopped\n{len(self.cam_recorder.frames)} frames captured",
+                f"Webcam Stopped\n{len(self.cam_recorder.base64_frames)} frames captured",
                 "system"
             )
 
@@ -346,9 +429,6 @@ class Tamagg:
         
         self.transcriber.audio_recorder.stop()
         self.audio_rec_thread.join(timeout=15)
-        
-        
-        
 
         self.console_display.add_text(
             "Audio and Transcribing Stopped",
@@ -390,7 +470,7 @@ class Tamagg:
 
     def process_ai_assistant(self):
         self.console_display.add_text("Interfacing with AI...", "system")
-        self.logger.info("processing ai assistant")
+        self.update_status("AI processing....")
         self.logger.info(f"transcription_text: {self.transcriber.transcribed_text}")
         try:
             if not self.allow_screen_recording:
@@ -421,7 +501,7 @@ class Tamagg:
             # clear frames and text
             self.transcriber.transcribed_text = ""
 
-            if resp:
+            if resp and self.enable_assistant_voice:
                 self.tts_thread = threading.Thread(
                     target=self.tts.run_speech, args=(resp,)
                 )
