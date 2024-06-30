@@ -4,6 +4,7 @@ from datetime import datetime
 import openai
 from pydub import AudioSegment
 from pydub.playback import _play_with_simpleaudio
+from pathlib import Path
 
 class TTS:
     """
@@ -27,6 +28,15 @@ class TTS:
         self.audio = None
         self.audio_path = None
         self.playback = None
+
+        # check for data dir and if none, create
+        folder = Path(f"{self.root_dir}/data/")
+        if not folder.exists():
+            try:
+                folder.mkdir(parents=True, exist_ok=True)  # Create parent directories if needed
+                print(f"Folder created: {folder}")
+            except OSError as e:
+                print(f"Error creating folder: {e}")
 
     def run_speech(self, response_text):
         if self.is_playing:
@@ -72,7 +82,7 @@ class TTS:
         client = openai.OpenAI()
         nn = datetime.now().strftime('%Y%M%d_%H%M%S')
         audio_fname = f"airesp{nn}.mp3"
-        self.audio_path = f"{self.root_dir}/data/{audio_fname}"
+        self.audio_path = Path(f"{self.root_dir}/data/{audio_fname}")
 
         try:
             with client.audio.speech.with_streaming_response.create(
@@ -93,8 +103,12 @@ class TTS:
         Play audio from TTS interface
         """
         self.is_playing = True
-        self.audio = AudioSegment.from_mp3(self.audio_path)
-        self.playback = _play_with_simpleaudio(self.audio)
+        try:
+            self.audio = AudioSegment.from_mp3(self.audio_path)
+            self.playback = _play_with_simpleaudio(self.audio)
+        except Exception as err:
+            self.logger.error(f"play_audio failed: {err}")
+            self.is_playing = False
 
     def stop_audio(self):
         self.logger.info(f"Stopping audio... {self.is_playing} {self.playback}")

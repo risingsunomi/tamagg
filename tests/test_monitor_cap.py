@@ -21,6 +21,10 @@ class TestMonitorCapture(unittest.TestCase):
             # Assuming horizontal alignment for simplicity
             combined_image = np.hstack((screen1, screen2))
 
+            # cv2.imshow('Combined Image', combined_image)
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
+
             self.assertNotEqual(combined_image.size, 0)
     
     def test_one_monitors(self):

@@ -25,21 +25,17 @@ class Transcriber:
             raise e
         
     def record_transcribe(self):
-        
+        self.logger.info("record_transcribe started")
         try:
             for audio_data in self.audio_recorder.record():
-                self.logger.info(
-                    f"audio_recorder.stop_event.is_set(): {self.audio_recorder.stop_event.is_set()}"
-                )
                 try:
                     resp = self.transcribe(audio_data)
                     if resp.strip():
                         self.transcribed_text += resp
-                        self.logger.info(f"{self.transcribed_text}")
                 except Exception as e:
                     self.logger.error(f"Error during transcription: {e}")
                     break
         except Exception as e:
             self.logger.error(f"Error during audio recording: {e}")
-        finally:
-            self.logger.info(f"record_transcribe -> \"{self.transcribed_text}\"")
+        
+        self.logger.info(f"record_transcribe -> \"{self.transcribed_text}\"")
