@@ -8,6 +8,7 @@ import pyaudio
 import os
 from dotenv import load_dotenv
 import cv2
+import platform
 
 from transcriber import Transcriber
 from console_display import ConsoleDisplay
@@ -190,7 +191,12 @@ class Tamagg:
         index = 0
         while index < 6:
             self.logger.info(f"Check cam index {index}")
-            cap = cv2.VideoCapture(index)
+
+            if platform.system().lower() == "windows":
+                cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(index)
+
             if cap.read()[0]:
                 webcams.append(f"Webcam {index}")
                 cap.release()
