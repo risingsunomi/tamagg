@@ -428,7 +428,7 @@ class Tamagg:
         self.logger.info("self.audio_rec_thread.join()")
         
         self.transcriber.audio_recorder.stop()
-        self.audio_rec_thread.join(timeout=15)
+        self.audio_rec_thread.join(timeout=20)
 
         self.console_display.add_text(
             "Audio and Transcribing Stopped",
