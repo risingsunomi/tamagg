@@ -187,7 +187,7 @@ class Tamagg:
 
         # = Monitors/Webcams menu
         monitors_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Select Monitors/Webcams", menu=monitors_menu)
+        menubar.add_cascade(label="Select Monitor/Webcam", menu=monitors_menu)
 
         # == Monitors and Webcam options
         self.monitor_list = self.get_monitor_and_webcam_list()
@@ -202,7 +202,7 @@ class Tamagg:
 
         # = Microphones menu
         microphones_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Select Microphones", menu=microphones_menu)
+        menubar.add_cascade(label="Select Microphone", menu=microphones_menu)
 
         # == Microphone options
         self.microphone_list = self.get_microphone_list()
@@ -299,7 +299,9 @@ class Tamagg:
         for i in range(p.get_device_count()):
             device_info = p.get_device_info_by_index(i)
             if device_info['maxInputChannels'] > 0:
-                mic_list.append(f"{i}: {device_info['name']}")
+                mic_listed_check = any(device_info['name'] in x for x in mic_list)
+                if not mic_listed_check:
+                    mic_list.append(f"{i}: {device_info['name']}")
         return mic_list
 
     def select_microphone(self):

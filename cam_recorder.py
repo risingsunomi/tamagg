@@ -11,6 +11,7 @@ import shortuuid
 import logging
 import os
 import threading
+import platform
 from PIL import Image, ImageDraw
 
 class CamRecorder:
@@ -23,6 +24,7 @@ class CamRecorder:
         self.is_recording = False
         self.logger = logging.getLogger(__name__)
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
+        self.cam_display_thread = None
     
     def start_recording(self):
         self.is_recording = True
@@ -31,7 +33,11 @@ class CamRecorder:
 
         try:
             fcnt = 1
-            cap = cv2.VideoCapture(self.camera_index)
+            if platform.system().lower() == "windows":
+                cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
+            else:
+                cap = cv2.VideoCapture(self.camera_index)
+
             while self.is_recording:
                 if fcnt == self.max_frames:
                     self.logger.info(f"Stopped at frame {self.max_frames} due to AI model space")
@@ -42,12 +48,21 @@ class CamRecorder:
                     self.logger.error("Failed to capture frame from camera")
                     break
 
+                self.cam_display_thread = threading.Thread(
+                    target=cv2.imshow,
+                    args=(
+                        f"Webcam {self.camera_index}",
+                        frame
+                    ))
+                self.cam_display_thread.start()
+
                 self.convert_frames_to_base64(frame)
 
                 self.logger.info(f"Captured frame {fcnt}")
                 fcnt += 1
 
             cap.release()
+            self.cam_display_thread.join(timeout=1)
             self.logger.info("Stopped Camera Recording")
         except Exception as err:
             self.logger.error(f"Camera Recording failed: {err}")
