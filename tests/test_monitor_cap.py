@@ -6,7 +6,7 @@ import mss
 class TestMonitorCapture(unittest.TestCase):
     def test_all_monitors(self):
         # Initialize mss
-        with mss() as sct:
+        with mss.mss() as sct:
             # List of all monitors
             monitors = sct.monitors
 
@@ -29,7 +29,7 @@ class TestMonitorCapture(unittest.TestCase):
     
     def test_one_monitors(self):
         # Initialize mss
-        with mss() as sct:
+        with mss.mss() as sct:
             # List of all monitors
             monitors = sct.monitors
             screen = np.array(sct.grab(monitors[2]))

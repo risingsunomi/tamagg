@@ -7,6 +7,7 @@ import cv2
 from mss import mss
 from screen_recorder import ScreenRecorder
 import logging
+from pathlib import Path
 
 class TestScreenRecorder(unittest.TestCase):
     def setUp(self):
@@ -84,8 +85,8 @@ class TestScreenRecorder(unittest.TestCase):
             # cv2.destroyAllWindows()
 
             # Save the image to a local data folder
-            output_folder = "tests/data/"
-            output_path = os.path.join(output_folder, 'ocv_decoded_image.jpg')
+            output_path = Path("./data/ocv_decoded_image.jpg")
+            print(output_path)
             cv2.imwrite(output_path, img_np)
 
             # check image save

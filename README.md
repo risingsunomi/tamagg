@@ -7,3 +7,4 @@ A gaming assistant experiment with vision, voice to text and text to voice. Shou
 ## Requirements
 * [speech_recognition](https://github.com/Uberi/speech_recognition)
 * [pydub](https://github.com/jiaaro/pydub)
+* [pytorch](https://pytorch.org/get-started/locally/) with CUDA
