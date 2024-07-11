@@ -124,7 +124,7 @@ class Tamagg:
             command=self.toggle_recording, 
             style='Green.TButton'
         )
-        self.start_stop_button.grid(row=1, column=0, padx=10, pady=10, sticky="se")
+        self.start_stop_button.grid(row=1, column=0, padx=10, pady=10, sticky="s")
         self.root.bind('<Control-r>', self.toggle_recording)
 
         # --------------------------
@@ -141,7 +141,7 @@ class Tamagg:
             fg="lime"
         )
         self.status_label.grid(
-            row=2, column=0, columnspan=2, sticky="sw", padx=10, pady=10)
+            row=2, column=0, columnspan=2, sticky="s", padx=10, pady=10)
         
         # Console Display
         # Make the console display resizable
@@ -221,7 +221,8 @@ class Tamagg:
 
         # -----------------------------
 
-        self.console_display.add_text("AI Assistant Initialized. Hello!")
+        self.console_display.add_text("Hello!")
+        self.update_status(f"Platform Detected - {platform.platform().lower()}")
 
         if platform.system().lower() == "windows":
             self.show_popup(
@@ -363,26 +364,23 @@ class Tamagg:
                 f"Camera Recording Started on Camera {self.webcam_index}",
                 "system"
             )
-            
+        
             self.logger.info("Starting camera recording thread")
             self.cam_recorder = CamRecorder(self.webcam_index)
             self.video_rec_thread = threading.Thread(
                 target=self.cam_recorder.start_recording)
             self.video_rec_thread.start()
 
-        
         # start mic and record for transcribe
         self.console_display.add_text(
             "Audio and Transcribing Started",
             "system"
         )
-        self.logger.info("Starting record_transcribe thread")
 
-        
+        self.logger.info("Starting record_transcribe thread")
         self.audio_rec_thread = threading.Thread(
             target=self.transcriber.record_transcribe)
         self.audio_rec_thread.start()
-        
 
         self.start_stop_button.config(text="Stop", style='Red.TButton')
         
@@ -397,6 +395,7 @@ class Tamagg:
 
         processing_thread = threading.Thread(target=self._process_stop_recording)
         processing_thread.start()
+        processing_thread.join()
 
     def _process_stop_recording(self):
         if self.tts.is_playing:
@@ -447,6 +446,7 @@ class Tamagg:
             self.ai_thread = threading.Thread(target=self.process_ai_assistant)
 
         self.ai_thread.start()
+        self.ai_thread.join()
 
     def _update_button_to_start(self):
         self.logger.info("Changing to Start button...")

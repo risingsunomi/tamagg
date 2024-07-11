@@ -13,6 +13,7 @@ import os
 import threading
 import platform
 from PIL import Image, ImageDraw
+import queue
 
 class CamRecorder:
     def __init__(self, camera_index: int=0):
@@ -25,12 +26,24 @@ class CamRecorder:
         self.logger = logging.getLogger(__name__)
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
         self.cam_display_thread = None
+        self.frame_queue = queue.Queue()
     
-    def start_recording(self):
-        self.is_recording = True
+    def show_cam_display(self):
+        """
+        Display cam to show what is being captured
+        """
+        while self.is_recording or not self.frame_queue.empty():
+            try:
+                frame = self.frame_queue.get(timeout=1)
+                cv2.imshow(f"Camera {self.camera_index}", frame)
+                cv2.waitKey(1)
+            except queue.Empty:
+                continue
 
-        self.logger.info(f"Starting Camera {self.camera_index} Recording...")
-
+    def capture_frames(self):
+        """
+        Capture cam video via opencv
+        """
         try:
             fcnt = 1
             if platform.system().lower() == "windows":
@@ -48,24 +61,32 @@ class CamRecorder:
                     self.logger.error("Failed to capture frame from camera")
                     break
 
-                self.cam_display_thread = threading.Thread(
-                    target=cv2.imshow,
-                    args=(
-                        f"Webcam {self.camera_index}",
-                        frame
-                    ))
-                self.cam_display_thread.start()
-
+                self.frame_queue.put(frame)
                 self.convert_frames_to_base64(frame)
 
                 self.logger.info(f"Captured frame {fcnt}")
                 fcnt += 1
 
             cap.release()
-            self.cam_display_thread.join(timeout=1)
-            self.logger.info("Stopped Camera Recording")
         except Exception as err:
             self.logger.error(f"Camera Recording failed: {err}")
+
+    def start_recording(self):
+        self.is_recording = True
+
+        self.logger.info(f"Starting Camera {self.camera_index} Recording...")
+
+        capture_thread = threading.Thread(target=self.capture_frames)
+        display_thread = threading.Thread(target=self.show_cam_display)
+
+        capture_thread.start()
+        display_thread.start()
+
+        capture_thread.join()
+        self.is_recording = False
+        display_thread.join()
+
+        self.logger.info("Stopped Camera Recording")
 
     def stop_recording(self):
         self.logger.debug("stop_recording called")
