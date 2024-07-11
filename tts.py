@@ -5,6 +5,7 @@ import openai
 from pydub import AudioSegment
 from pydub.playback import _play_with_simpleaudio
 from pathlib import Path
+from elevenlabs.client import ElevenLabs
 
 class TTS:
     """
@@ -81,7 +82,7 @@ class TTS:
     def run_openai(self, response_text):
         client = openai.OpenAI()
         nn = datetime.now().strftime('%Y%M%d_%H%M%S')
-        audio_fname = f"airesp{nn}.mp3"
+        audio_fname = f"oai_airesp{nn}.mp3"
         self.audio_path = Path(f"{self.root_dir}/data/{audio_fname}")
 
         try:
@@ -93,6 +94,32 @@ class TTS:
                 tts_oai.stream_to_file(self.audio_path)
         except Exception as err:
             self.logger.error(f"run_openai tts failed: {err}")
+            raise
+        finally:
+            # Play the audio response
+            self.play_audio()
+
+    def run_elevenlabs(self, response_text):
+        client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+        nn = datetime.now().strftime('%Y%M%d_%H%M%S')
+        audio_fname = f"11_airesp{nn}.mp3"
+        self.audio_path = Path(f"{self.root_dir}/data/{audio_fname}")
+
+        try:
+            audio = client.generate(
+                text=response_text,
+                voice="Rachel",
+                model="eleven_multilingual_v2",
+                stream=True
+            )
+
+            with open(self.audio_path, "wb") as out_file:
+                for bchunk in audio:
+                    if bchunk is not None:
+                        out_file.write(bchunk)
+
+        except Exception as err:
+            self.logger.error(f"elevenlabs failed: {err}")
             raise
         finally:
             # Play the audio response

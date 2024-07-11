@@ -5,7 +5,7 @@ import mss
 import logging
 import time
 import pyaudio
-import os
+
 from dotenv import load_dotenv
 import cv2
 import platform
@@ -162,6 +162,7 @@ class Tamagg:
         # = File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
+
         # == Quit
         file_menu.add_command(label="Quit", command=self.on_closing)
 
@@ -215,6 +216,35 @@ class Tamagg:
                 value=microphone,
                 command=self.select_microphone
             )
+
+        # == frame display
+        # label
+        self.label = tk.Label(root, text="Recording Camera Display")
+        self.label.grid(row=1, column=3, padx=10, pady=10, columnspan=2)
+        self.label.config(bg="black", fg="lime")
+
+        # Create a canvas for image display
+        self.frame_canvas = tk.Canvas(root, width=305, height=305)
+        self.frame_canvas.grid(row=0, column=3, padx=10, pady=10, columnspan=1, rowspan=1)
+        self.frame_canvas.config(bg="black")
+
+        # == llm temp control
+        ts_style = ttk.Style()
+        ts_style.configure("Horizontal.TScale", length=500)
+
+        self.temp_var = tk.DoubleVar(value=self.llm.llm_temp)
+        self.temp_knob = ttk.Scale(
+            self.root, 
+            from_=0, 
+            to=1, 
+            orient='horizontal', 
+            variable=self.temp_var, 
+            command=self.update_temperature,
+            style="Horizontal.TScale"
+        )
+        self.temp_knob.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+        self.temp_label = tk.Label(self.root, text=f"Temp @ {self.llm.llm_temp}")
+        self.temp_label.grid(row=3, column=0, columnspan=1)
 
         # Configure the root window to display the menubar
         self.root.config(menu=menubar)
@@ -327,6 +357,13 @@ class Tamagg:
 
     def toggle_eav(self):
         self.enable_assistant_voice = bool(self.eav_var.get())
+
+    def update_temperature(self, val):
+        val = round(float(val), 2)
+        self.temp_label.config(text=f"Temp @ {val}")
+        self.llm.llm_temp = val
+        self.logger.info(f"Updating llm temp to {val}")
+
     
     def start_recording(self):
         self.update_status("Recording & Transcribing...")
@@ -355,7 +392,9 @@ class Tamagg:
 
             self.logger.info("Starting screen recording thread")
 
-            self.screen_recorder = ScreenRecorder(self.monitor_number)
+            self.screen_recorder = ScreenRecorder(
+                self.monitor_number
+            )
             self.video_rec_thread = threading.Thread(
                 target=self.screen_recorder.start_recording)
             self.video_rec_thread.start()
@@ -364,20 +403,23 @@ class Tamagg:
                 f"Camera Recording Started on Camera {self.webcam_index}",
                 "system"
             )
-        
             self.logger.info("Starting camera recording thread")
-            self.cam_recorder = CamRecorder(self.webcam_index)
+            self.cam_recorder = CamRecorder(
+                self.frame_canvas,
+                self.webcam_index
+            )
             self.video_rec_thread = threading.Thread(
                 target=self.cam_recorder.start_recording)
             self.video_rec_thread.start()
 
+        
         # start mic and record for transcribe
         self.console_display.add_text(
             "Audio and Transcribing Started",
             "system"
         )
-
         self.logger.info("Starting record_transcribe thread")
+        
         self.audio_rec_thread = threading.Thread(
             target=self.transcriber.record_transcribe)
         self.audio_rec_thread.start()
@@ -393,15 +435,20 @@ class Tamagg:
         self.start_stop_button.config(text="Record", style='Gray.TButton')
         self.start_stop_button.config(state='disabled')
 
+        
+
         processing_thread = threading.Thread(target=self._process_stop_recording)
         processing_thread.start()
-        processing_thread.join()
 
     def _process_stop_recording(self):
         if self.tts.is_playing:
             self.tts.stop_audio()
 
         self.is_recording = False
+
+        self.transcriber.audio_recorder.stop()
+        self.logger.info("self.audio_rec_thread.join()")
+        self.audio_rec_thread.join(timeout=10)
 
         if not self.use_webcam and self.allow_screen_recording:
             self.logger.info("self.screen_recorder.stop_recording()")
@@ -428,8 +475,7 @@ class Tamagg:
 
         self.logger.info("self.audio_rec_thread.join()")
         
-        self.transcriber.audio_recorder.stop()
-        self.audio_rec_thread.join(timeout=20)
+        
 
         self.console_display.add_text(
             "Audio and Transcribing Stopped",
@@ -437,6 +483,8 @@ class Tamagg:
         )
         self.update_status("Recording stopped")
         self.logger.info("Recording stopped")
+
+        self.frame_canvas.delete("all")
 
         self.console_display.add_text(f"{self.transcriber.transcribed_text}", ftype="user")
         
@@ -446,7 +494,6 @@ class Tamagg:
             self.ai_thread = threading.Thread(target=self.process_ai_assistant)
 
         self.ai_thread.start()
-        self.ai_thread.join()
 
     def _update_button_to_start(self):
         self.logger.info("Changing to Start button...")

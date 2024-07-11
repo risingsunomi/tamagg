@@ -23,6 +23,7 @@ class LLM:
         self.logger = logging.getLogger(__name__)
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
         self.chat_history = []
+        self.llm_temp = 1.0
 
         # functions
         self.llmfunc = LLMFunctions(console_display=self.console_display)
@@ -94,7 +95,7 @@ class LLM:
             params = {
                 "model": self.gpt_model,
                 "messages": self.chat_history,
-                "temperature": 0.3,
+                "temperature": self.llm_temp,
                 "functions": self.llmfunc.functions,
                 "function_call": self.llmfunc.function_call
             }

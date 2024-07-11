@@ -4,7 +4,6 @@ CamRecorder
 handles camera recording and convert to jpeg then base64
 """
 import cv2
-import ctypes
 import numpy as np
 import base64
 import shortuuid
@@ -12,11 +11,12 @@ import logging
 import os
 import threading
 import platform
-from PIL import Image, ImageDraw
+from PIL import Image, ImageTk
+import tkinter as tk
 import queue
 
 class CamRecorder:
-    def __init__(self, camera_index: int=0):
+    def __init__(self, frame_canvas, camera_index: int=0):
         self.record_id = shortuuid.uuid()
         self.camera_index = camera_index
         self.frames: list[np.ndarray] = []
@@ -27,6 +27,7 @@ class CamRecorder:
         self.root_dir = os.path.dirname(os.path.abspath(__file__))
         self.cam_display_thread = None
         self.frame_queue = queue.Queue()
+        self.frame_canvas = frame_canvas
     
     def show_cam_display(self):
         """
@@ -34,9 +35,29 @@ class CamRecorder:
         """
         while self.is_recording or not self.frame_queue.empty():
             try:
-                frame = self.frame_queue.get(timeout=1)
-                cv2.imshow(f"Camera {self.camera_index}", frame)
-                cv2.waitKey(1)
+                if self.frame_canvas:
+                    logging.info("show frame in frame canvas")
+                    frame = self.frame_queue.get(timeout=1)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(frame)
+                    img = img.resize((300,300), Image.Resampling.NEAREST)
+                    imgtk = ImageTk.PhotoImage(image=img)
+
+                    # Calculate the center position
+                    canvas_width = self.frame_canvas.winfo_width()
+                    canvas_height = self.frame_canvas.winfo_height()
+                    img_width = imgtk.width()
+                    img_height = imgtk.height()
+                    x_center = (canvas_width - img_width) // 2
+                    y_center = (canvas_height - img_height) // 2
+
+                    self.frame_canvas.create_image(x_center, y_center, anchor=tk.NW, image=imgtk)
+                    self.frame_canvas.imgtk = imgtk
+                
+                else:
+                    logging.error("No frame_canvas found")
+                    break
+
             except queue.Empty:
                 continue
 
@@ -61,7 +82,7 @@ class CamRecorder:
                     self.logger.error("Failed to capture frame from camera")
                     break
 
-                self.frame_queue.put(frame)
+                self.frame_queue.put(frame.copy())
                 self.convert_frames_to_base64(frame)
 
                 self.logger.info(f"Captured frame {fcnt}")
@@ -73,6 +94,7 @@ class CamRecorder:
 
     def start_recording(self):
         self.is_recording = True
+        self.frame_queue = queue.Queue()
 
         self.logger.info(f"Starting Camera {self.camera_index} Recording...")
 
