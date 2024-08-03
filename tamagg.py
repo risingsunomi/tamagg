@@ -30,7 +30,7 @@ class Tamagg:
         self.transcriber = Transcriber()
         self.console_display = ConsoleDisplay(self.root)
         self.llm = LLM(console_display=self.console_display)
-        self.tts = TTS(console_display=self.console_display)
+        self.tts = None
 
         self.screen_recorder = None
         self.cam_recorder =  None
@@ -38,8 +38,10 @@ class Tamagg:
         self.microphone_index = None
         self.monitor_number = 0
         self.webcam_index = 0
-        self.screen_record_var = 0
-        self.eav_var = 0
+        self.screen_record_allow = 0
+        self.voice_assistant_allow = 0
+        self.tts_provider = "openai"
+        self.convo_mode_allow = False
 
         self.is_recording = False
         self.allow_screen_recording = True
@@ -171,19 +173,44 @@ class Tamagg:
         menubar.add_cascade(label="Options", menu=options_menu)
         
         # == Screen recording option
-        self.screen_record_var = tk.IntVar(value=True)
+        self.screen_record_allow = tk.IntVar(value=True)
         options_menu.add_checkbutton(
             label='Allow Screen Recording', 
-            variable=self.screen_record_var,
+            variable=self.screen_record_allow,
             command=self.toggle_screen_recording
         )
 
         # == Assistant voice option
-        self.eav_var = tk.IntVar(value=True)
+        self.voice_assistant_allow = tk.IntVar(value=True)
         options_menu.add_checkbutton(
             label='Enable Assistant Voice', 
-            variable=self.eav_var,
+            variable=self.voice_assistant_allow,
             command=self.toggle_eav
+        )
+
+        # == Assistant voice option
+        self.convo_mode_allow= tk.IntVar(value=True)
+        options_menu.add_checkbutton(
+            label='Enable Conversation Mode', 
+            variable=self.convo_mode_allow,
+            command=self.toggle_eav
+        )
+
+        # == LLM Provider submenu
+        llm_provider_menu = tk.Menu(options_menu, tearoff=0)
+        options_menu.add_cascade(label="TTS Provider", menu=llm_provider_menu)
+
+        # LLM Provider options
+        self.tts_provider = tk.StringVar(value="openai")
+        llm_provider_menu.add_radiobutton(
+            label='OpenAI TTS', 
+            variable=self.tts_provider,
+            value="openai"
+        )
+        llm_provider_menu.add_radiobutton(
+            label='ElevenLabs TTS', 
+            variable=self.tts_provider,
+            value="elevenlabs"
         )
 
         # = Monitors/Webcams menu
@@ -251,8 +278,9 @@ class Tamagg:
 
         # -----------------------------
 
-        self.console_display.add_text("Hello!")
-        self.update_status(f"Platform Detected - {platform.platform().lower()}")
+        self.console_display.add_text(f"Hello! Press Start and begin speaking. You are talking to LLM model \"{self.llm.gpt_model}\" from provider {self.llm.llm_provider}")
+
+        self.logger.info(f"Platform Detected - {platform.platform().lower()}")
 
         if platform.system().lower() == "windows":
             self.show_popup(
@@ -353,10 +381,10 @@ class Tamagg:
             self.start_recording()
 
     def toggle_screen_recording(self):
-        self.allow_screen_recording = bool(self.screen_record_var.get())
+        self.allow_screen_recording = bool(self.screen_record_allow.get())
 
     def toggle_eav(self):
-        self.enable_assistant_voice = bool(self.eav_var.get())
+        self.enable_assistant_voice = bool(self.voice_assistant_allow.get())
 
     def update_temperature(self, val):
         val = round(float(val), 2)
@@ -435,12 +463,14 @@ class Tamagg:
         self.start_stop_button.config(text="Record", style='Gray.TButton')
         self.start_stop_button.config(state='disabled')
 
-        
-
         processing_thread = threading.Thread(target=self._process_stop_recording)
         processing_thread.start()
 
     def _process_stop_recording(self):
+        """
+        Thread to close all audio recording threads
+        and to independently update the UI
+        """
         if self.tts.is_playing:
             self.tts.stop_audio()
 
@@ -475,8 +505,6 @@ class Tamagg:
 
         self.logger.info("self.audio_rec_thread.join()")
         
-        
-
         self.console_display.add_text(
             "Audio and Transcribing Stopped",
             "system"
@@ -529,11 +557,6 @@ class Tamagg:
                     transcription_text=self.transcriber.transcribed_text
                 )
             else:
-                # resp = self.llm.run(
-                #     sbframes=self.screen_recorder.get_frames(),
-                #     transcription_text=self.transcriber.transcribed_text
-                # )
-
                 if not self.use_webcam:
                     resp = self.llm.run(
                         frames_hw=self.screen_recorder.frames[0].shape,
@@ -551,6 +574,7 @@ class Tamagg:
             self.transcriber.transcribed_text = ""
 
             if resp and self.enable_assistant_voice:
+                self.tts = TTS(self.console_display, self.tts_provider)
                 self.tts_thread = threading.Thread(
                     target=self.tts.run_speech, args=(resp,)
                 )
@@ -560,8 +584,13 @@ class Tamagg:
             self.logger.info("done processing")
 
             if not self.is_agent:
-                # Update the UI in the main thread with start recording btn
-                self.start_stop_button.after(0, self._update_button_to_start)
+                if not self.convo_mode_allow:
+                    # Update the UI in the main thread with start recording btn
+                    self.start_stop_button.after(0, self._update_button_to_start)
+                else:
+                    # Open back up the mic for a response
+                    self.console_display.add_text("Conversation Mode enabled, Opening Mic for Response", "system")
+                    self.start_recording()
 
         except Exception as err:
             self.update_status("Error with LLM! Please retry...", error=True)
@@ -585,8 +614,6 @@ class Tamagg:
             if self.video_rec_thread.is_alive:
                 self.video_rec_thread.join(timeout=1)
             self.screen_recorder.stop_recording()
-            # self.screen_recorder.nvjpeg.cleanup_nvjpeg()
-            # os.remove(self.screen_recorder.sqldb)
         
         self.root.quit()
         self.root.destroy()

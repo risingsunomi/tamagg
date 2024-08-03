@@ -14,10 +14,12 @@ class LLM:
     def __init__(
             self,
             gpt_model="gpt-4o",
+            llm_provider="openai",
             console_display=None
         ):
         
         self.gpt_model = gpt_model
+        self.llm_provider = llm_provider
         self.open_ai_client = openai.OpenAI()
         self.console_display = console_display
         self.logger = logging.getLogger(__name__)

@@ -49,6 +49,12 @@ class TTS:
             except Exception as err:
                 self.logger.error(f"run_speech failed: {err}")
                 raise
+        elif self.tts_provider == "elevenlab":
+            try:
+                self.run_elevenlabs(response_text)
+            except Exception as err:
+                self.logger.error(f"run_speech failed: {err}")
+                raise
 
         # # Use TTS to get the audio response
         # tts_response = requests.post(
