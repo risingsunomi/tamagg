@@ -26,14 +26,14 @@ class Tamagg:
     def __init__(self, root):
         self.root = root
         self.root.title("TAMAGG [ALPHA]")
-        self.root.configure(bg='black')
+        self.root.configure(bg='#2b2b2b')
         self.transcriber = Transcriber()
         self.console_display = ConsoleDisplay(self.root)
         self.llm = LLM(console_display=self.console_display)
         self.tts = None
 
         self.screen_recorder = None
-        self.cam_recorder =  None
+        self.cam_recorder = None
         self.tts_thread = None
         self.microphone_index = None
         self.monitor_number = 0
@@ -48,7 +48,7 @@ class Tamagg:
         self.enable_assistant_voice = True
         self.use_webcam = False
 
-        # agent management
+        # Agent management
         self.is_agent = False
         self.agent_loop = 1
 
@@ -57,7 +57,7 @@ class Tamagg:
         self.video_rec_thread = None
         self.ai_thread = None
 
-        # logging
+        # Logging
         self.logger = logging.getLogger(__name__)
 
         # Start/Stop recording buttons with dark theme
@@ -69,51 +69,63 @@ class Tamagg:
         # --------------------------
         self.style.configure(
             'TButton', 
-            background='green', 
+            background='#3a6ea5',  # Slate Blue
             foreground='white', 
-            font=("Consolas", 10)
+            font=("Helvetica", 10)
         )
         self.style.map(
             'TButton', 
-            background=[('active', 'green')], 
-            foreground=[('active', 'white')])
-        
-        self.style.configure(
-            'Green.TButton', 
-            background='green', 
-            foreground='white',
-            font=("Consolas", 10)
-        )
-        self.style.map(
-            'Green.TButton', 
-            background=[('active', 'darkgreen')], 
+            background=[('active', '#2a5d84')],  # Darker Slate Blue on Active
             foreground=[('active', 'white')]
         )
-        
+
         self.style.configure(
-            'Red.TButton', 
-            background='red', 
+            'Primary.TButton', 
+            background='#3a6ea5',  # Slate Blue
             foreground='white',
-            font=("Consolas", 10)
+            font=("Helvetica", 10)
         )
         self.style.map(
-            'Red.TButton', 
-            background=[('active', 'red')], 
+            'Primary.TButton', 
+            background=[('active', '#2a5d84')],  # Darker Slate Blue on Active
             foreground=[('active', 'white')]
         )
-        
+
         self.style.configure(
-            'Gray.TButton', 
-            background='gray', 
+            'Success.TButton', 
+            background='#28a745',  # Green
             foreground='white',
-            font=("Consolas", 10)
+            font=("Helvetica", 10)
         )
         self.style.map(
-            'Gray.TButton', 
-            background=[('active', 'gray')], 
+            'Success.TButton', 
+            background=[('active', '#218838')],  # Darker Green on Active
             foreground=[('active', 'white')]
         )
-        # --------------------------
+
+        self.style.configure(
+            'Danger.TButton', 
+            background='#dc3545',  # Red
+            foreground='white',
+            font=("Helvetica", 10)
+        )
+        self.style.map(
+            'Danger.TButton', 
+            background=[('active', '#c82333')],  # Darker Red on Active
+            foreground=[('active', 'white')]
+        )
+
+        self.style.configure(
+            'Secondary.TButton', 
+            background='#6c757d',  # Gray
+            foreground='white',
+            font=("Helvetica", 10)
+        )
+        self.style.map(
+            'Secondary.TButton', 
+            background=[('active', '#5a6268')],  # Darker Gray on Active
+            foreground=[('active', 'white')]
+        )
 
         # --------------------------
         # Buttons
@@ -124,7 +136,7 @@ class Tamagg:
             self.root, 
             text="Record", 
             command=self.toggle_recording, 
-            style='Green.TButton'
+            style='Success.TButton'
         )
         self.start_stop_button.grid(row=1, column=0, padx=10, pady=10, sticky="s")
         self.root.bind('<Control-r>', self.toggle_recording)
@@ -143,7 +155,7 @@ class Tamagg:
             fg="lime"
         )
         self.status_label.grid(
-            row=2, column=0, columnspan=2, sticky="s", padx=10, pady=10)
+            row=2, column=0, columnspan=2, sticky="sw", padx=10, pady=10)
         
         # Console Display
         # Make the console display resizable
@@ -189,7 +201,7 @@ class Tamagg:
         )
 
         # == Assistant voice option
-        self.convo_mode_allow= tk.IntVar(value=True)
+        self.convo_mode_allow = tk.IntVar(value=True)
         options_menu.add_checkbutton(
             label='Enable Conversation Mode', 
             variable=self.convo_mode_allow,
@@ -211,6 +223,16 @@ class Tamagg:
             label='ElevenLabs TTS', 
             variable=self.tts_provider,
             value="elevenlabs"
+        )
+
+        # == LLM Temperature control submenu
+        llm_temp_menu = tk.Menu(options_menu, tearoff=0)
+        options_menu.add_cascade(label="LLM Temperature", menu=llm_temp_menu)
+
+        # LLM Temperature control
+        llm_temp_menu.add_command(
+            label="Adjust Temperature", 
+            command=self.show_temp_control_dialog
         )
 
         # = Monitors/Webcams menu
@@ -255,24 +277,6 @@ class Tamagg:
         self.frame_canvas.grid(row=0, column=3, padx=10, pady=10, columnspan=1, rowspan=1)
         self.frame_canvas.config(bg="black")
 
-        # == llm temp control
-        ts_style = ttk.Style()
-        ts_style.configure("Horizontal.TScale", length=500)
-
-        self.temp_var = tk.DoubleVar(value=self.llm.llm_temp)
-        self.temp_knob = ttk.Scale(
-            self.root, 
-            from_=0, 
-            to=1, 
-            orient='horizontal', 
-            variable=self.temp_var, 
-            command=self.update_temperature,
-            style="Horizontal.TScale"
-        )
-        self.temp_knob.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
-        self.temp_label = tk.Label(self.root, text=f"Temp @ {self.llm.llm_temp}")
-        self.temp_label.grid(row=3, column=0, columnspan=1)
-
         # Configure the root window to display the menubar
         self.root.config(menu=menubar)
 
@@ -287,6 +291,7 @@ class Tamagg:
                 "!! Windows User Warning !!",
                 "Windows users might have an issue with monitor numbering being backwards. This means monitor 1 will be monitor 2 and other such cases. Fix/workaround in the works."
             )
+
     
     def show_popup(self, title, content):
         """
@@ -391,6 +396,34 @@ class Tamagg:
         self.temp_label.config(text=f"Temp @ {val}")
         self.llm.llm_temp = val
         self.logger.info(f"Updating llm temp to {val}")
+        
+    def show_temp_control_dialog(self):
+        temp_control_dialog = tk.Toplevel(self.root)
+        temp_control_dialog.title("Adjust LLM Temperature")
+        temp_control_dialog.configure(bg='#2b2b2b')
+
+        ts_style = ttk.Style()
+        ts_style.configure("Horizontal.TScale", length=300)
+
+        self.temp_var = tk.DoubleVar(value=self.llm.llm_temp)
+        temp_knob = ttk.Scale(
+            temp_control_dialog, 
+            from_=0, 
+            to=1, 
+            orient='horizontal', 
+            variable=self.temp_var, 
+            command=self.update_temperature,
+            style="Horizontal.TScale"
+        )
+        temp_knob.grid(row=0, column=0, padx=10, pady=10)
+
+        self.temp_label = tk.Label(
+            temp_control_dialog, 
+            text=f"Temp @ {self.llm.llm_temp}", 
+            bg="black", 
+            fg="lime"
+        )
+        self.temp_label.grid(row=1, column=0, padx=10, pady=10)
 
     
     def start_recording(self):
@@ -401,7 +434,7 @@ class Tamagg:
 
         # stop any audio
         self.logger.info("Stopping TTS if any")
-        if self.tts.is_playing:
+        if self.tts and self.tts.is_playing:
             self.tts.stop_audio()
 
         # record monitor
@@ -471,7 +504,7 @@ class Tamagg:
         Thread to close all audio recording threads
         and to independently update the UI
         """
-        if self.tts.is_playing:
+        if self.tts and self.tts.is_playing:
             self.tts.stop_audio()
 
         self.is_recording = False
@@ -604,7 +637,7 @@ class Tamagg:
             self.status_label.config(fg="lime", text=message)
 
     def on_closing(self):
-        if self.tts.is_playing:
+        if self.tts and self.tts.is_playing:
             if self.tts_thread.is_alive:
                 self.tts_thread.join(timeout=1)
             
